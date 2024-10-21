@@ -68,7 +68,8 @@ def save_frame(image, filename, blurriness=None, frame_number=None, note=""):
 
 #%% Import video file
 # Path to the .mpg file
-video_path = "G:\PapyrusSorted\AIZUATOVA_Imira_19970420_FEMALE\OD_20231124121205\OD_20231124121205_X0.0T_Y-2.0_Z0.0_AIZUATOVA_Imira_246.mpg"
+# video_path = "G:\PapyrusSorted\AIZUATOVA_Imira_19970420_FEMALE\OD_20231124121205\OD_20231124121205_X0.0T_Y-2.0_Z0.0_AIZUATOVA_Imira_246.mpg"
+video_path = "G:\PapyrusSorted\ALNAMROD_Islam_20060101_FEMALE\OD_20240602140937\OD_20240602140937_X0.0T_Y-2.0_Z0.0_ALNAMROD_Islam_492.mpg"
 
 # Open the video file
 video = cv2.VideoCapture(video_path)
@@ -130,26 +131,26 @@ for i in range(len(frames)):
 
 plt.figure(figsize=(10, 6))
 plt.plot(blurriness, marker='o', linestyle='-', color='b')
-plt.title('Local Gray Level Variance Over Frames')
-plt.xlabel('Frame Index')
-plt.ylabel('Local Gray Level Variance')
+plt.title('Local gray level variance over frames')
+plt.xlabel('Frame index')
+plt.ylabel('Local gray level variance')
 plt.grid(True)
 plt.show()
 
 #%% Select the sharpest frames
-threshold = 1400
+threshold = 0.9 * max(blurriness)
 selected_frames_indices = [i for i, var in enumerate(blurriness) if var > threshold]
 best_frame_index = np.argmax(blurriness)
 
 #%% Perform registration to reference
-ref_image = frames[best_frame_index]
-offset_image = frames[selected_frames_indices[4]]
-sr = StackReg(StackReg.RIGID_BODY)
-out_rigid = sr.register_transform(ref_image, offset_image)
-# Show registered frames
-show_frame(out_rigid, note="Registered image")
-show_frame(ref_image, frame_number=best_frame_index, note="Reference image")
-show_frame(offset_image, frame_number=selected_frames_indices[4], note="Unregistered image")
+# ref_image = frames[best_frame_index]
+# offset_image = frames[selected_frames_indices[4]]
+# sr = StackReg(StackReg.RIGID_BODY)
+# out_rigid = sr.register_transform(ref_image, offset_image)
+# # Show registered frames
+# show_frame(out_rigid, note="Registered image")
+# show_frame(ref_image, frame_number=best_frame_index, note="Reference image")
+# show_frame(offset_image, frame_number=selected_frames_indices[4], note="Unregistered image")
 
 #%% Perform stack registration
 selected_frames = frames[selected_frames_indices]
@@ -159,6 +160,7 @@ out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previo
 for i, frame in enumerate(out_rigid_stack):
     show_frame(frame, frame_number=i, note="Stack registered image")
 
+# oriznout nebo pospojovat a rozsirit??
 #%% Average registered frames
 cum = np.mean(out_rigid_stack, axis=0)
 show_frame(cum, note="Mean of registered frames")
