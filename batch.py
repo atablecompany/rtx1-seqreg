@@ -6,8 +6,8 @@ import fundus
 # Function to process each video
 def process_video(video_path):
     frames = fundus.import_video(video_path)
-    sharpness = [fundus.calculate_sharpness(frame) for frame in frames]
-    cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=0.92 * max(sharpness))
+    sharpness = fundus.calculate_sharpness(frames)
+    cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=0.92 * max(sharpness), reference='previous')
     filename = os.path.basename(video_path)
     filename = filename[:-4] + "_cumulated.png"
     fundus.show_frame(cum, note=cum_note, save=True, filename=filename)

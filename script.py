@@ -1,9 +1,17 @@
+import numpy as np
+from cv2 import imread
+from skimage.color import gray2rgb
+import fundus
+import matplotlib.pyplot as plt
+
+SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom' or 'variance_of_laplacian'
 #%% Import video file
 # Path to the .mpg file
-video_path = "G:/PapyrusSorted/test.mpg"
-# video_path = "G:\PapyrusSorted\ALNAMROD_Islam_20060101_FEMALE\OD_20240602140937\OD_20240602140937_X0.0T_Y-2.0_Z0.0_ALNAMROD_Islam_492.mpg"
+# video_path = "G:/PapyrusSorted/test.mpg"
+video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg"
+reference_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.png"
 
-frames = import_video(video_path)
+frames = fundus.import_video(video_path)
 print(frames.shape)
 
 #%% Determine the variance of laplacian of frames
@@ -12,13 +20,11 @@ print(frames.shape)
 #     var_of_lap.append(cv2.Laplacian(frame, cv2.CV_64F).var())
 
 #%% Determine the sharpness of frames
-sharpness = []
-for frame in frames:
-    sharpness.append(calculate_sharpness(frame, metric=SHARPNESS_METRIC))  # Using local gray variance
+sharpness = fundus.calculate_sharpness(frames)
 
 #%% Show frames and plot sharpness over frame indices
-for i in range(len(frames)):
-    show_frame(frames[i], sharpness[i], i)
+# for i in range(len(frames)):
+#     fundus.show_frame(frames[i], sharpness[i], i)
 
 plt.figure(figsize=(10, 6))
 plt.plot(sharpness, marker='o', linestyle='-', color='b')
@@ -28,32 +34,22 @@ plt.ylabel('Sharpness')
 plt.grid(True)
 plt.show()
 
+# Proc je to od i=7 vsechno rozmazany??
+
 #%% Select the sharpest frames
-threshold = 0.92 * max(sharpness)
-selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]
-best_frame_index = np.argmax(sharpness)
+# threshold = 0.92 * max(sharpness)
+# selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]
+# best_frame_index = np.argmax(sharpness)
 
-#%% Perform registration to reference
-# ref_image = frames[best_frame_index]
-# offset_image = frames[selected_frames_indices[4]]
-# sr = StackReg(StackReg.RIGID_BODY)
-# out_rigid = sr.register_transform(ref_image, offset_image)
-# # Show registered frames
-# show_frame(out_rigid, note="Registered image")
-# show_frame(ref_image, frame_number=best_frame_index, note="Reference image")
-# show_frame(offset_image, frame_number=selected_frames_indices[4], note="Unregistered image")
+ # oriznout nebo pospojovat a rozsirit??
+#%%
+cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=0.92 * max(sharpness), reference='previous', cumulate=True)
 
-#%% Perform stack registration
-selected_frames = frames[selected_frames_indices]
-sr = StackReg(StackReg.RIGID_BODY)
-out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
-# Show registered frames
-for i, frame in enumerate(out_rigid_stack):
-    show_frame(frame, frame_number=selected_frames_indices[i], note="Stack registered image")
 
-# oriznout nebo pospojovat a rozsirit??
 #%% Average registered frames
-cum = np.mean(out_rigid_stack, axis=0)
-cum_note = f"Mean of {len(selected_frames_indices)} registered frames"
-show_frame(cum, note=cum_note, save=True, filename="cum.png")
-show_frame(cum, note=cum_note)
+# cum = np.mean(out_rigid_stack, axis=0)
+# cum_note = f"Mean of {len(selected_frames_indices)} registered frames"
+# fundus.show_frame(cum, note=cum_note, save=True, filename="cum.png")
+fundus.show_frame(cum, note=cum_note)
+# print(fundus.assess_quality(cum))
+print(fundus.assess_quality(imread(reference_path)))

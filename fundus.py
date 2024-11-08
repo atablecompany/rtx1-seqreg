@@ -1,8 +1,12 @@
+from sys import exception
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 from pystackreg import StackReg
 from dom import DOM
+import piq
+from skimage.color import rgb2gray
 
 SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom' or 'variance_of_laplacian'
 iqa = DOM()  # Initialize DOM
@@ -53,33 +57,40 @@ def import_video(video_path):
     return np.array(frames_list).astype("uint8")  # Output array of frames
 
 
-def calculate_sharpness(frame, metric=SHARPNESS_METRIC, window_size=36):
+def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
     """
-    Calculates the sharpness of a frame using a specified metric.
-    :param frame: Input frame as np.array.
-    :param metric: Can be either 'variance_of_gray', 'dom' or 'variance_of_laplacian'.
+    Calculates the sharpness of a frame or frame stack using a specified metric.
+    :param frames: Input frame as np.array.
+    :param metric: Can be either 'variance_of_gray', 'dom', 'variance_of_laplacian'.
     :param window_size: Size of window for local variance of gray.
-    :return: Estimated sharpness value.
+    :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
-    if metric == 'variance_of_gray':
-        # Determine the local gray level variance in a window https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=903548
-        height, width = frame.shape
-        local_variances = []
-        for y in range(0, height, window_size):
-            for x in range(0, width, window_size):
-                window = frame[y:y + window_size, x:x + window_size]
-                if window.size == 0:
-                    continue
-                local_variances.append(np.var(window))
-        var_of_gray = np.mean(local_variances)
-        return var_of_gray
-    elif metric == 'dom':
-        # Using DOM https://projet.liris.cnrs.fr/imagine/pub/proceedings/ICPR-2012/media/files/0043.pdf
-        dom = iqa.get_sharpness(frame) ** 4
-        return dom
-    elif metric == 'variance_of_laplacian':
-        var_of_lap = cv2.Laplacian(frame, cv2.CV_64F).var()
-        return var_of_lap
+    if len(frames.shape) == 2:
+        # If a single frame is given
+        if metric == 'variance_of_gray':
+            # Determine the local gray level variance in a window https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=903548
+            height, width = frames.shape
+            local_variances = []
+            for y in range(0, height, window_size):
+                for x in range(0, width, window_size):
+                    window = frames[y:y + window_size, x:x + window_size]
+                    if window.size == 0:
+                        continue
+                    local_variances.append(np.var(window))
+            var_of_gray = np.mean(local_variances)
+            return var_of_gray
+        elif metric == 'dom':
+            # Using DOM https://projet.liris.cnrs.fr/imagine/pub/proceedings/ICPR-2012/media/files/0043.pdf
+            dom = iqa.get_sharpness(frames) ** 4
+            return dom
+        elif metric == 'variance_of_laplacian':
+            var_of_lap = cv2.Laplacian(frames, cv2.CV_64F).var()
+            return var_of_lap
+    elif len(frames.shape) == 3:
+        # If a frame stack is given
+        return [calculate_sharpness(f, metric, window_size) for f in frames]
+    else:
+        raise exception("Invalid input shape")
 
 
 def show_frame(image, sharpness=None, frame_number=None, note="", save=False, filename="out.png"):
@@ -100,6 +111,7 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
     if sharpness is None:
         sharpness = calculate_sharpness(image)
 
+    quality = assess_quality(image)
     # Create a figure matching the original image size (1:1)
     fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
 
@@ -111,12 +123,9 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
 
     # Overlay the title on top of the image
     if frame_number is None:
-        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness}", color='white', fontsize=12,
-                 ha='center', va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.0f}, quality={quality:.0f}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     else:
-        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness}, i={frame_number}", color='white', fontsize=12,
-                 ha='center',
-                 va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.0f}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     # Hide axis
     plt.axis('off')
 
@@ -131,26 +140,65 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
     plt.show()
 
 
-def register_cumulate(frames, sharpness, threshold, cumulate=True):
+def register_cumulate(frames, sharpness, threshold, reference='previous', cumulate=True):
     """
     Registers the sharpest frames and optionally averages them to reduce noise.
+    :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to the previous frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
     :param frames: Frames as np.array.
-    :param sharpness: List of sharpness values for each frame.
+    :param sharpness: List of sharpness values for frames.
     :param threshold: Threshold for selecting the sharpest frames.
     :param cumulate: Controls whether to average the registered frames.
-    :return: If cumulate is False, returns the registered frames. If cumulate is True, returns the cumulated image alongside a note.
+    :return: If cumulate is False, returns the registered frame stack as np.array. If cumulate is True, returns the cumulated image (np.array) alongside a note (string).
     """
-    selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]
+    if reference == 'previous':
+        # Register to previous frame in the stack
+        # Find the sharpest frames and add them to a list
+        selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]  # Select frames above threshold
+        selected_frames = frames[selected_frames_indices]  # Add the selected frames to the list. The frames are in chronological order
 
-    # Perform stack registration
-    selected_frames = frames[selected_frames_indices]
-    sr = StackReg(StackReg.RIGID_BODY)
-    out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
+        # Perform registration
+        sr = StackReg(StackReg.RIGID_BODY)
+        out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
+    elif reference == 'best':
+        # Register to the sharpest frame
+        # Find the sharpest frame and move it to the first position in the stack
+        best_frame_index = np.argmax(sharpness)  # Find sharpest frame
+        selected_frames = frames[best_frame_index]  # Add the sharpest frame to the array in position 0
+        selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]  # Select frames above threshold
+        selected_frames_indices.remove(best_frame_index)  # Remove the sharpest frame from the indices list (it's already in selected_frames)
+        selected_frames = np.vstack((selected_frames[np.newaxis, ...], frames[selected_frames_indices]))  # Add the selected frames to the list. The sharpest frame is in position 0, followed by the selected frames in chronological order
+
+        # Perform registration
+        sr = StackReg(StackReg.RIGID_BODY)
+        out_rigid_stack = sr.register_transform_stack(selected_frames, reference='first')
+    else:
+        raise exception("Invalid reference parameter")
+
     if not cumulate:
         return out_rigid_stack
     else:
         # Average registered frames
         cum = np.mean(out_rigid_stack, axis=0)
-        cum_note = f"Mean of {len(selected_frames_indices)} registered frames"
+        cum_note = f"Mean of {len(selected_frames_indices)} registered frames (previous)"
         return cum, cum_note
 
+
+def assess_quality(image):
+    """
+    Evaluates the quality of an image using the BRISQUE metric.
+    :param image: Input image as np.array.
+    :return: BRISQUE index from 0 to 100. Lower scores indicate better quality.
+    """
+    # Convert RGB input image to grayscale
+    if image.ndim == 3:
+        image = rgb2gray(image)
+
+    # Ensure all pixel values are non-negative
+    if np.min(image) < 0:
+        image = image + abs(np.min(image))
+
+    intensity_range = np.max(image)
+    # Convert image to 4D tensor
+    image = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(image), 0), 0)
+    score = piq.brisque(image, data_range=intensity_range)
+    return score.item()
