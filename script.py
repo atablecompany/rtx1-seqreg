@@ -1,6 +1,4 @@
-import numpy as np
 from cv2 import imread
-from skimage.color import gray2rgb
 import fundus
 import matplotlib.pyplot as plt
 
@@ -8,8 +6,8 @@ SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom
 #%% Import video file
 # Path to the .mpg file
 # video_path = "G:/PapyrusSorted/test.mpg"
-video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg"
-reference_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.png"
+video_path = "C:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg"
+reference_path = "C:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.png"
 
 frames = fundus.import_video(video_path)
 print(frames.shape)
@@ -34,7 +32,7 @@ plt.ylabel('Sharpness')
 plt.grid(True)
 plt.show()
 
-# Proc je to od i=7 vsechno rozmazany??
+# Proc je to od i=7 vsechno rozmazany?? pro C:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg
 
 #%% Select the sharpest frames
 # threshold = 0.92 * max(sharpness)
@@ -51,5 +49,5 @@ cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=0.92 * max
 # cum_note = f"Mean of {len(selected_frames_indices)} registered frames"
 # fundus.show_frame(cum, note=cum_note, save=True, filename="cum.png")
 fundus.show_frame(cum, note=cum_note)
-# print(fundus.assess_quality(cum))
+print(fundus.assess_quality(cum))
 print(fundus.assess_quality(imread(reference_path)))

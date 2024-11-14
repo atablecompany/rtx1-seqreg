@@ -7,9 +7,12 @@ from pystackreg import StackReg
 from dom import DOM
 import piq
 from skimage.color import rgb2gray
+# pip install -r requirements.txt
+
 
 SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom' or 'variance_of_laplacian'
-iqa = DOM()  # Initialize DOM
+if SHARPNESS_METRIC == 'dom':
+    iqa = DOM()  # Initialize DOM
 
 
 def import_video(video_path):
