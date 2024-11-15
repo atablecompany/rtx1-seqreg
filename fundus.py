@@ -7,12 +7,65 @@ from pystackreg import StackReg
 from dom import DOM
 import piq
 from skimage.color import rgb2gray
+from skimage.metrics import structural_similarity as ssim
+
 # pip install -r requirements.txt
-
-
 SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom' or 'variance_of_laplacian'
 if SHARPNESS_METRIC == 'dom':
     iqa = DOM()  # Initialize DOM
+
+
+def import_video_auto(video_path, similarity_threshold=0.95):
+    """
+    Opens a video file and returns a np.array of averaged frames based on similarity.
+    :param video_path: Video file path.
+    :param similarity_threshold: Threshold for frame similarity to group frames.
+    :return: Averaged frames as np.array.
+    """
+    # Open the video file
+    video = cv2.VideoCapture(video_path)
+
+    if not video.isOpened():
+        print("Error opening video file")
+        exit()
+    frames_list = []
+
+    # Read the first frame
+    ok, prev_frame = video.read()
+    if not ok:
+        print("Cannot read video file")
+        exit()
+    prev_gray_frame = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+    group_frames = [prev_gray_frame]
+
+    while True:
+        ok, frame = video.read()
+        if not ok:
+            break
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Calculate SSIM between the current frame and the previous frame
+        similarity = ssim(prev_gray_frame, gray_frame)
+
+        if similarity >= similarity_threshold:
+            # If frames are similar, add to the current group
+            group_frames.append(gray_frame)
+        else:
+            # If frames are not similar, average the current group and start a new group
+            group_avg = np.mean(group_frames, axis=0).astype("uint8")
+            frames_list.append(group_avg)
+            group_frames = [gray_frame]
+
+        prev_gray_frame = gray_frame
+
+    # Average the last group of frames
+    if group_frames:
+        group_avg = np.mean(group_frames, axis=0).astype("uint8")
+        frames_list.append(group_avg)
+
+    video.release()
+
+    return np.array(frames_list).astype("uint8")  # Output array of frames
 
 
 def import_video(video_path):
@@ -37,6 +90,7 @@ def import_video(video_path):
             print("Cannot read video file")
             exit()
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
         initial_frames.append(gray_frame)
     initial_avg = np.mean(initial_frames, axis=0).astype("uint8")
     frames_list.append(initial_avg)
@@ -126,9 +180,9 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
 
     # Overlay the title on top of the image
     if frame_number is None:
-        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.0f}, quality={quality:.0f}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}, quality={quality:.0f}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     else:
-        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.0f}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     # Hide axis
     plt.axis('off')
 
@@ -175,7 +229,8 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
         sr = StackReg(StackReg.RIGID_BODY)
         out_rigid_stack = sr.register_transform_stack(selected_frames, reference='first')
     else:
-        raise exception("Invalid reference parameter")
+        print("Invalid reference parameter")
+        exit()
 
     if not cumulate:
         return out_rigid_stack

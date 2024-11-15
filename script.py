@@ -2,7 +2,7 @@ from cv2 import imread
 import fundus
 import matplotlib.pyplot as plt
 
-SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom' or 'variance_of_laplacian'
+# SHARPNESS_METRIC is set within fundus.py
 #%% Import video file
 # Path to the .mpg file
 # video_path = "G:/PapyrusSorted/test.mpg"
@@ -21,16 +21,25 @@ print(frames.shape)
 sharpness = fundus.calculate_sharpness(frames)
 
 #%% Show frames and plot sharpness over frame indices
-# for i in range(len(frames)):
-#     fundus.show_frame(frames[i], sharpness[i], i)
+for i in range(len(frames)):
+     fundus.show_frame(frames[i], sharpness[i], i)
 
 plt.figure(figsize=(10, 6))
 plt.plot(sharpness, marker='o', linestyle='-', color='b')
-plt.title(f'Sharpness over frames, metric={SHARPNESS_METRIC}')
+plt.title('Sharpness over frames')
 plt.xlabel('Frame index')
 plt.ylabel('Sharpness')
 plt.grid(True)
 plt.show()
+
+# quality = [fundus.assess_quality(frame) for frame in frames]
+# plt.figure(figsize=(10, 6))
+# plt.plot(quality, marker='o', linestyle='-', color='r')
+# plt.title('Quality over frames')
+# plt.xlabel('Frame index')
+# plt.ylabel('Sharpness')
+# plt.grid(True)
+# plt.show()
 
 # Proc je to od i=7 vsechno rozmazany?? pro C:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg
 
@@ -43,11 +52,10 @@ plt.show()
 #%%
 cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=0.92 * max(sharpness), reference='previous', cumulate=True)
 
-
 #%% Average registered frames
 # cum = np.mean(out_rigid_stack, axis=0)
 # cum_note = f"Mean of {len(selected_frames_indices)} registered frames"
 # fundus.show_frame(cum, note=cum_note, save=True, filename="cum.png")
 fundus.show_frame(cum, note=cum_note)
-print(fundus.assess_quality(cum))
-print(fundus.assess_quality(imread(reference_path)))
+print(f"Registered image quality: {fundus.assess_quality(cum)}")
+print(f"Reference image quality: {fundus.assess_quality(imread(reference_path))}")
