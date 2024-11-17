@@ -1,13 +1,20 @@
+from skimage.color import rgb2gray
+from skimage.measure import shannon_entropy
 from cv2 import imread
-import fundus
 import matplotlib.pyplot as plt
+import fundus
+from fundus import calculate_sharpness
 
 # SHARPNESS_METRIC is set within fundus.py
 #%% Import video file
 # Path to the .mpg file
-# video_path = "G:/PapyrusSorted/test.mpg"
-video_path = "C:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg"
-reference_path = "C:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.png"
+# video_path = "G:/PapyrusSorted/test_auto.mpg"
+# video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg"
+# reference_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.png"
+# video_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506114845\OD_20240506114845_X2.0N_Y0.0_Z0.0_ABADZHIEVA_Polina_496.mpg"
+# reference_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506114845\OD_20240506114845_X2.0N_Y0.0_Z0.0_ABADZHIEVA_Polina_496.png"
+video_path = "G:\PapyrusSorted\ALTSTEDT_Lia_20050421_FEMALE\OD_20231219141316\OD_20231219141316_X0.0T_Y-2.0_Z0.0_ALTSTEDT_Lia_NS017.mpg"
+reference_path = "G:\PapyrusSorted\ALTSTEDT_Lia_20050421_FEMALE\OD_20231219141316\OD_20231219141316_X0.0T_Y-2.0_Z0.0_ALTSTEDT_Lia_NS017.png"
 
 frames = fundus.import_video(video_path)
 print(frames.shape)
@@ -19,43 +26,49 @@ print(frames.shape)
 
 #%% Determine the sharpness of frames
 sharpness = fundus.calculate_sharpness(frames)
-
 #%% Show frames and plot sharpness over frame indices
-for i in range(len(frames)):
-     fundus.show_frame(frames[i], sharpness[i], i)
+# for i in range(len(frames)):
+#     fundus.show_frame(frames[i], sharpness[i], i)
 
-plt.figure(figsize=(10, 6))
-plt.plot(sharpness, marker='o', linestyle='-', color='b')
-plt.title('Sharpness over frames')
-plt.xlabel('Frame index')
-plt.ylabel('Sharpness')
-plt.grid(True)
-plt.show()
-
-# quality = [fundus.assess_quality(frame) for frame in frames]
 # plt.figure(figsize=(10, 6))
-# plt.plot(quality, marker='o', linestyle='-', color='r')
-# plt.title('Quality over frames')
+# plt.plot(sharpness, marker='o', linestyle='-', color='b')
+# plt.title('Sharpness over frames')
 # plt.xlabel('Frame index')
 # plt.ylabel('Sharpness')
 # plt.grid(True)
 # plt.show()
 
-# Proc je to od i=7 vsechno rozmazany?? pro C:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg
+# # quality = [fundus.assess_quality(frame) for frame in frames]
+# # plt.figure(figsize=(10, 6))
+# # plt.plot(quality, marker='o', linestyle='-', color='r')
+# # plt.title('Quality over frames')
+# # plt.xlabel('Frame index')
+# # plt.ylabel('Sharpness')
+# # plt.grid(True)
+# # plt.show()
+
+# entropy = [shannon_entropy(frame) for frame in frames]
+# plt.figure(figsize=(10, 6))
+# plt.plot(entropy, marker='o', linestyle='-', color='g')
+# plt.title('Entropy over frames')
+# plt.xlabel('Frame index')
+# plt.ylabel('Sharpness')
+# plt.grid(True)
+# plt.show()
 
 #%% Select the sharpest frames
 # threshold = 0.92 * max(sharpness)
 # selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]
 # best_frame_index = np.argmax(sharpness)
 
- # oriznout nebo pospojovat a rozsirit??
+# oriznout nebo pospojovat a rozsirit??
 #%%
-cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=0.92 * max(sharpness), reference='previous', cumulate=True)
+cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=min(sharpness) + 0.3* (max(sharpness) - min(sharpness)), cumulate=True, reference='best')
 
 #%% Average registered frames
-# cum = np.mean(out_rigid_stack, axis=0)
-# cum_note = f"Mean of {len(selected_frames_indices)} registered frames"
+
 # fundus.show_frame(cum, note=cum_note, save=True, filename="cum.png")
 fundus.show_frame(cum, note=cum_note)
+fundus.show_frame(rgb2gray(imread(reference_path)), note="Reference image")
 print(f"Registered image quality: {fundus.assess_quality(cum)}")
 print(f"Reference image quality: {fundus.assess_quality(imread(reference_path))}")

@@ -1,4 +1,3 @@
-from sys import exception
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,6 +7,7 @@ from dom import DOM
 import piq
 from skimage.color import rgb2gray
 from skimage.metrics import structural_similarity as ssim
+from skimage.measure import shannon_entropy
 
 # pip install -r requirements.txt
 SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom' or 'variance_of_laplacian'
@@ -15,7 +15,7 @@ if SHARPNESS_METRIC == 'dom':
     iqa = DOM()  # Initialize DOM
 
 
-def import_video_auto(video_path, similarity_threshold=0.95):
+def import_video(video_path, similarity_threshold=0.92):
     """
     Opens a video file and returns a np.array of averaged frames based on similarity.
     :param video_path: Video file path.
@@ -68,50 +68,50 @@ def import_video_auto(video_path, similarity_threshold=0.95):
     return np.array(frames_list).astype("uint8")  # Output array of frames
 
 
-def import_video(video_path):
-    """
-    Opens a video file and returns a np.array of valid frames (4 averaged initial frames, then averaged triplets of frames).
-    :param video_path: Video file path.
-    :return: Valid frames as np.array.
-    """
-    # Open the video file
-    video = cv2.VideoCapture(video_path)
-
-    if not video.isOpened():
-        print("Error opening video file")
-        exit()
-    frames_list = []
-
-    # Read and average the first 4 frames
-    initial_frames = []
-    for _ in range(4):
-        ok, frame = video.read()
-        if not ok:
-            print("Cannot read video file")
-            exit()
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
-        initial_frames.append(gray_frame)
-    initial_avg = np.mean(initial_frames, axis=0).astype("uint8")
-    frames_list.append(initial_avg)
-
-    # Read and average every triplet of frames
-    while True:
-        triplet_frames = []
-        for _ in range(3):
-            ok, frame = video.read()
-            if not ok:
-                break
-            gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            triplet_frames.append(gray_frame)
-        if len(triplet_frames) < 3:
-            break
-        triplet_avg = np.mean(triplet_frames, axis=0)
-        frames_list.append(triplet_avg)
-
-    video.release()
-
-    return np.array(frames_list).astype("uint8")  # Output array of frames
+# def import_video_manual(video_path):
+#     """
+#     Opens a video file and returns a np.array of valid frames (4 averaged initial frames, then averaged triplets of frames).
+#     :param video_path: Video file path.
+#     :return: Valid frames as np.array.
+#     """
+#     # Open the video file
+#     video = cv2.VideoCapture(video_path)
+#
+#     if not video.isOpened():
+#         print("Error opening video file")
+#         exit()
+#     frames_list = []
+#
+#     # Read and average the first 4 frames
+#     initial_frames = []
+#     for _ in range(4):
+#         ok, frame = video.read()
+#         if not ok:
+#             print("Cannot read video file")
+#             exit()
+#         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+#
+#         initial_frames.append(gray_frame)
+#     initial_avg = np.mean(initial_frames, axis=0).astype("uint8")
+#     frames_list.append(initial_avg)
+#
+#     # Read and average every triplet of frames
+#     while True:
+#         triplet_frames = []
+#         for _ in range(3):
+#             ok, frame = video.read()
+#             if not ok:
+#                 break
+#             gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+#             triplet_frames.append(gray_frame)
+#         if len(triplet_frames) < 3:
+#             break
+#         triplet_avg = np.mean(triplet_frames, axis=0)
+#         frames_list.append(triplet_avg)
+#
+#     video.release()
+#
+#     return np.array(frames_list).astype("uint8")  # Output array of frames
 
 
 def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
@@ -147,7 +147,7 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
         # If a frame stack is given
         return [calculate_sharpness(f, metric, window_size) for f in frames]
     else:
-        raise exception("Invalid input shape")
+        raise Exception("Invalid input shape")
 
 
 def show_frame(image, sharpness=None, frame_number=None, note="", save=False, filename="out.png"):
@@ -161,7 +161,6 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
     :param filename: Name of the file to be saved.
     :return:
     """
-    
     dpi = 100  # Use your preferred DPI for display
     height, width = image.shape
 
@@ -169,6 +168,7 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
         sharpness = calculate_sharpness(image)
 
     quality = assess_quality(image)
+    entropy = shannon_entropy(image)
     # Create a figure matching the original image size (1:1)
     fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
 
@@ -182,7 +182,7 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
     if frame_number is None:
         plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}, quality={quality:.0f}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     else:
-        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}, entropy={entropy}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     # Hide axis
     plt.axis('off')
 
@@ -210,7 +210,7 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
     if reference == 'previous':
         # Register to previous frame in the stack
         # Find the sharpest frames and add them to a list
-        selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]  # Select frames above threshold
+        selected_frames_indices = [i for i, var in enumerate(sharpness) if var < threshold]  # Select frames above threshold
         selected_frames = frames[selected_frames_indices]  # Add the selected frames to the list. The frames are in chronological order
 
         # Perform registration
@@ -219,9 +219,9 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
     elif reference == 'best':
         # Register to the sharpest frame
         # Find the sharpest frame and move it to the first position in the stack
-        best_frame_index = np.argmax(sharpness)  # Find sharpest frame
+        best_frame_index = np.argmin(sharpness)  # Find sharpest frame
         selected_frames = frames[best_frame_index]  # Add the sharpest frame to the array in position 0
-        selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]  # Select frames above threshold
+        selected_frames_indices = [i for i, var in enumerate(sharpness) if var < threshold]  # Select frames above threshold
         selected_frames_indices.remove(best_frame_index)  # Remove the sharpest frame from the indices list (it's already in selected_frames)
         selected_frames = np.vstack((selected_frames[np.newaxis, ...], frames[selected_frames_indices]))  # Add the selected frames to the list. The sharpest frame is in position 0, followed by the selected frames in chronological order
 
@@ -229,15 +229,14 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
         sr = StackReg(StackReg.RIGID_BODY)
         out_rigid_stack = sr.register_transform_stack(selected_frames, reference='first')
     else:
-        print("Invalid reference parameter")
-        exit()
+        raise Exception("Invalid reference")
 
     if not cumulate:
         return out_rigid_stack
     else:
         # Average registered frames
         cum = np.mean(out_rigid_stack, axis=0)
-        cum_note = f"Mean of {len(selected_frames_indices)} registered frames (previous)"
+        cum_note = f"Mean of {selected_frames.shape[0]} registered frames ({reference})"
         return cum, cum_note
 
 
