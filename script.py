@@ -13,8 +13,10 @@ from fundus import calculate_sharpness
 # reference_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.png"
 # video_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506114845\OD_20240506114845_X2.0N_Y0.0_Z0.0_ABADZHIEVA_Polina_496.mpg"
 # reference_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506114845\OD_20240506114845_X2.0N_Y0.0_Z0.0_ABADZHIEVA_Polina_496.png"
-video_path = "G:\PapyrusSorted\ALTSTEDT_Lia_20050421_FEMALE\OD_20231219141316\OD_20231219141316_X0.0T_Y-2.0_Z0.0_ALTSTEDT_Lia_NS017.mpg"
-reference_path = "G:\PapyrusSorted\ALTSTEDT_Lia_20050421_FEMALE\OD_20231219141316\OD_20231219141316_X0.0T_Y-2.0_Z0.0_ALTSTEDT_Lia_NS017.png"
+# video_path = "G:\PapyrusSorted\ALTSTEDT_Lia_20050421_FEMALE\OD_20231219141316\OD_20231219141316_X0.0T_Y-2.0_Z0.0_ALTSTEDT_Lia_NS017.mpg"
+# reference_path = "G:\PapyrusSorted\ALTSTEDT_Lia_20050421_FEMALE\OD_20231219141316\OD_20231219141316_X0.0T_Y-2.0_Z0.0_ALTSTEDT_Lia_NS017.png"
+video_path = "G:\PapyrusSorted\ATIEH_Rola_19900524_FEMALE\OD_20240321124427\OD_20240321124427_X7.9N_Y4.1_Z140.0_ATIEH_Rola_439.mpg"
+reference_path = "G:\PapyrusSorted\ATIEH_Rola_19900524_FEMALE\OD_20240321124427\OD_20240321124427_X7.9N_Y4.1_Z140.0_ATIEH_Rola_439.png"
 
 frames = fundus.import_video(video_path)
 print(frames.shape)
@@ -26,17 +28,20 @@ print(frames.shape)
 
 #%% Determine the sharpness of frames
 sharpness = fundus.calculate_sharpness(frames)
-#%% Show frames and plot sharpness over frame indices
-# for i in range(len(frames)):
-#     fundus.show_frame(frames[i], sharpness[i], i)
+sharpness_threshold = min(sharpness) + 0.3* (max(sharpness) - min(sharpness))
+#%% Show frames
+for i in range(len(frames)):
+    fundus.show_frame(frames[i], sharpness[i], i)
 
-# plt.figure(figsize=(10, 6))
-# plt.plot(sharpness, marker='o', linestyle='-', color='b')
-# plt.title('Sharpness over frames')
-# plt.xlabel('Frame index')
-# plt.ylabel('Sharpness')
-# plt.grid(True)
-# plt.show()
+#%% Plot sharpness over frames
+plt.figure(figsize=(10, 6))
+plt.plot(sharpness, marker='o', linestyle='-', color='b')
+plt.axhline(y=sharpness_threshold, color='r', linestyle='--', label='Sharpness Threshold')
+plt.title('Sharpness over frames (vog)')
+plt.xlabel('Frame index')
+plt.ylabel('Sharpness')
+plt.grid(True)
+plt.show()
 
 # # quality = [fundus.assess_quality(frame) for frame in frames]
 # # plt.figure(figsize=(10, 6))
@@ -63,7 +68,7 @@ sharpness = fundus.calculate_sharpness(frames)
 
 # oriznout nebo pospojovat a rozsirit??
 #%%
-cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=min(sharpness) + 0.3* (max(sharpness) - min(sharpness)), cumulate=True, reference='best')
+cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=sharpness_threshold, cumulate=True, reference='best', mode='full')
 
 #%% Average registered frames
 

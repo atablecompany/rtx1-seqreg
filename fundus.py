@@ -139,7 +139,7 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
         elif metric == 'dom':
             # Using DOM https://projet.liris.cnrs.fr/imagine/pub/proceedings/ICPR-2012/media/files/0043.pdf
             dom = iqa.get_sharpness(frames) ** 4
-            return dom
+            return -dom  # -dom -> lower values = better
         elif metric == 'variance_of_laplacian':
             var_of_lap = cv2.Laplacian(frames, cv2.CV_64F).var()
             return var_of_lap
@@ -165,7 +165,10 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
     height, width = image.shape
 
     if sharpness is None:
-        sharpness = calculate_sharpness(image)
+        try:
+            sharpness = calculate_sharpness(image)
+        except:
+            sharpness = 0
 
     quality = assess_quality(image)
     entropy = shannon_entropy(image)
@@ -197,7 +200,33 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
     plt.show()
 
 
-def register_cumulate(frames, sharpness, threshold, reference='previous', cumulate=True):
+def crop_to_intersection(frames, threshold=0):
+    """
+    Find the intersection of all non-black regions across a stack of images.
+    Assumes images are numpy arrays with shape (H, W).
+
+    Parameters:
+        frames (list of np.ndarray): List of registered images.
+        threshold (int): Pixel value below which a pixel is considered black.
+
+    Returns:
+        tuple: (x_min, x_max, y_min, y_max) defining the bounding box of the intersection.
+    """
+    mask = np.ones_like(frames[0], dtype=bool)
+
+    for frame in frames:
+        mask &= (frame > threshold)
+
+    # Find the bounding box of the remaining mask
+    y_indices, x_indices = np.where(mask)
+    x_min, x_max = x_indices.min(), x_indices.max()
+    y_min, y_max = y_indices.min(), y_indices.max()
+
+    cropped_images = [frame[y_min:y_max + 1, x_min:x_max + 1] for frame in frames]
+    return cropped_images
+
+
+def register_cumulate(frames, sharpness, threshold, reference='previous', cumulate=True, crop=False):
     """
     Registers the sharpest frames and optionally averages them to reduce noise.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to the previous frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
@@ -205,6 +234,7 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
     :param sharpness: List of sharpness values for frames.
     :param threshold: Threshold for selecting the sharpest frames.
     :param cumulate: Controls whether to average the registered frames.
+    :param crop: Controls whether to crop the registered frames to their intersection.
     :return: If cumulate is False, returns the registered frame stack as np.array. If cumulate is True, returns the cumulated image (np.array) alongside a note (string).
     """
     if reference == 'previous':
@@ -231,13 +261,18 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
     else:
         raise Exception("Invalid reference")
 
-    if not cumulate:
-        return out_rigid_stack
-    else:
+    cum_note = ""
+    if crop:
+        # Crop images to their intersection
+        out_rigid_stack = crop_to_intersection(out_rigid_stack)
+        cum_note += "Cropped "
+    if cumulate:
         # Average registered frames
         cum = np.mean(out_rigid_stack, axis=0)
-        cum_note = f"Mean of {selected_frames.shape[0]} registered frames ({reference})"
+        cum_note += f"Mean of {selected_frames.shape[0]} registered frames ({reference})"
         return cum, cum_note
+    else:
+        return out_rigid_stack
 
 
 def assess_quality(image):
