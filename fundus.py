@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import skimage.restoration
 import torch
 from pystackreg import StackReg
 from dom import DOM
@@ -292,6 +293,16 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
         return cum, cum_note
     else:
         return out_rigid_stack
+
+
+def denoise(image, sigma=0.7):
+    """
+    Denoises an image using bilateral filtering.
+    :param sigma: Standard deviation for range distance. A larger value results in averaging of pixels with larger spatial differences.
+    :param image: Input image as np.ndarray.
+    :return: Denoised image as np.ndarray.
+    """
+    return skimage.restoration.denoise_bilateral(image, sigma_spatial=sigma)
 
 
 def assess_quality(image):

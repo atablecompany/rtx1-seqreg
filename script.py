@@ -4,7 +4,7 @@ from cv2 import imread
 import matplotlib.pyplot as plt
 import fundus
 from fundus import calculate_sharpness
-
+import skimage.restoration
 # SHARPNESS_METRIC is set within fundus.py
 #%% Import video file
 # Path to the .mpg file
@@ -69,7 +69,9 @@ plt.show()
 # oriznout nebo pospojovat a rozsirit??
 #%%
 cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=sharpness_threshold, cumulate=True, reference='best', crop=True)
-
+# registered_stack = fundus.register_cumulate(frames, sharpness, threshold=sharpness_threshold, cumulate=False, reference='best')
+denoised = fundus.denoise(cum)
+fundus.show_frame(denoised)
 #%% Average registered frames
 
 # fundus.show_frame(cum, note=cum_note, save=True, filename="cum.png")
