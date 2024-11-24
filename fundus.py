@@ -17,10 +17,10 @@ if SHARPNESS_METRIC == 'dom':
 
 def import_video(video_path, similarity_threshold=0.92):
     """
-    Opens a video file and returns a np.array of averaged frames based on similarity.
+    Opens a video file and returns a np.ndarray of averaged frames based on similarity.
     :param video_path: Video file path.
     :param similarity_threshold: Threshold for frame similarity to group frames.
-    :return: Averaged frames as np.array.
+    :return: Averaged frames as np.ndarray.
     """
     # Open the video file
     video = cv2.VideoCapture(video_path)
@@ -70,9 +70,9 @@ def import_video(video_path, similarity_threshold=0.92):
 
 # def import_video_manual(video_path):
 #     """
-#     Opens a video file and returns a np.array of valid frames (4 averaged initial frames, then averaged triplets of frames).
+#     Opens a video file and returns a np.ndarray of valid frames (4 averaged initial frames, then averaged triplets of frames).
 #     :param video_path: Video file path.
-#     :return: Valid frames as np.array.
+#     :return: Valid frames as np.ndarray.
 #     """
 #     # Open the video file
 #     video = cv2.VideoCapture(video_path)
@@ -117,7 +117,7 @@ def import_video(video_path, similarity_threshold=0.92):
 def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
     """
     Calculates the sharpness of a frame or frame stack using a specified metric.
-    :param frames: Input frame as np.array.
+    :param frames: Input frame as np.ndarray.
     :param metric: Can be either 'variance_of_gray', 'dom', 'variance_of_laplacian'.
     :param window_size: Size of window for local variance of gray.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
@@ -147,13 +147,13 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
         # If a frame stack is given
         return [calculate_sharpness(f, metric, window_size) for f in frames]
     else:
-        raise Exception("Invalid input shape")
+        raise ValueError("Invalid input shape")
 
 
 def show_frame(image, sharpness=None, frame_number=None, note="", save=False, filename="out.png"):
     """
     Displays a frame with a title overlay. Optionally saves the frame as a .png file.
-    :param image: Input frame as np.array.
+    :param image: Input frame as np.ndarray.
     :param sharpness: Sharpness value to be printed in the title. If None, it will be calculated according to the SHARPNESS_METRIC global variable.
     :param frame_number: Frame index to be printed in the title.
     :param note: Optional note to be printed in the title.
@@ -202,16 +202,33 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
 
 def crop_to_intersection(frames, threshold=0):
     """
-    Find the intersection of all non-black regions across a stack of images.
-    Assumes images are numpy arrays with shape (H, W).
-
-    Parameters:
-        frames (list of np.ndarray): List of registered images.
-        threshold (int): Pixel value below which a pixel is considered black.
-
-    Returns:
-        tuple: (x_min, x_max, y_min, y_max) defining the bounding box of the intersection.
+    Crops a stack of frames to their intersection.
+    :param frames: np.ndarray of registered images.
+    :param threshold: Pixel value below which a pixel is considered black.
+    :return:
     """
+    # TODO: implement rotation
+    # # Start with the maximum possible bounding box
+    # h, w = frames[0].shape[:2]
+    # x_min, x_max = 0, w - 1
+    # y_min, y_max = 0, h - 1
+    #
+    # for frame in frames:
+    #     # Find non-black pixels in the current image
+    #     non_black_mask = (frame > threshold)
+    #     y_indices, x_indices = np.where(non_black_mask)
+    #
+    #     # Update the bounding box
+    #     if len(x_indices) > 0 and len(y_indices) > 0:  # Ensure there are non-black pixels
+    #         x_min = max(x_min, x_indices.min())
+    #         x_max = min(x_max, x_indices.max())
+    #         y_min = max(y_min, y_indices.min())
+    #         y_max = min(y_max, y_indices.max())
+    #     else:
+    #         raise ValueError("One of the images is completely black within the threshold!")
+    #
+    # cropped_images = [frame[y_min:y_max + 1, x_min:x_max + 1] for frame in frames]
+    # return cropped_images
     mask = np.ones_like(frames[0], dtype=bool)
 
     for frame in frames:
@@ -230,12 +247,12 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
     """
     Registers the sharpest frames and optionally averages them to reduce noise.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to the previous frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
-    :param frames: Frames as np.array.
+    :param frames: Frames as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param threshold: Threshold for selecting the sharpest frames.
     :param cumulate: Controls whether to average the registered frames.
     :param crop: Controls whether to crop the registered frames to their intersection.
-    :return: If cumulate is False, returns the registered frame stack as np.array. If cumulate is True, returns the cumulated image (np.array) alongside a note (string).
+    :return: If cumulate is False, returns the registered frame stack as np.ndarray. If cumulate is True, returns the cumulated image (np.ndarray) alongside a note (string).
     """
     if reference == 'previous':
         # Register to previous frame in the stack
@@ -246,6 +263,7 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
         # Perform registration
         sr = StackReg(StackReg.RIGID_BODY)
         out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
+        out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
     elif reference == 'best':
         # Register to the sharpest frame
         # Find the sharpest frame and move it to the first position in the stack
@@ -258,8 +276,9 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
         # Perform registration
         sr = StackReg(StackReg.RIGID_BODY)
         out_rigid_stack = sr.register_transform_stack(selected_frames, reference='first')
+        out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
     else:
-        raise Exception("Invalid reference")
+        raise ValueError("Invalid reference")
 
     cum_note = ""
     if crop:
@@ -278,7 +297,7 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
 def assess_quality(image):
     """
     Evaluates the quality of an image using the BRISQUE metric.
-    :param image: Input image as np.array.
+    :param image: Input image as np.ndarray.
     :return: BRISQUE index from 0 to 100. Lower scores indicate better quality.
     """
     # Convert RGB input image to grayscale

@@ -30,8 +30,8 @@ print(frames.shape)
 sharpness = fundus.calculate_sharpness(frames)
 sharpness_threshold = min(sharpness) + 0.3* (max(sharpness) - min(sharpness))
 #%% Show frames
-for i in range(len(frames)):
-    fundus.show_frame(frames[i], sharpness[i], i)
+# for i in range(len(frames)):
+#     fundus.show_frame(frames[i], sharpness[i], i)
 
 #%% Plot sharpness over frames
 plt.figure(figsize=(10, 6))
@@ -68,7 +68,7 @@ plt.show()
 
 # oriznout nebo pospojovat a rozsirit??
 #%%
-cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=sharpness_threshold, cumulate=True, reference='best', mode='full')
+cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=sharpness_threshold, cumulate=True, reference='best', crop=True)
 
 #%% Average registered frames
 
