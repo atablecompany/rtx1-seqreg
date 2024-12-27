@@ -15,10 +15,19 @@ SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom
 if SHARPNESS_METRIC == 'dom':
     iqa = DOM()  # Initialize DOM
 
+# Manual video import
+# video = cv2.VideoCapture("G:\PapyrusSorted\ATIEH_Rola_19900524_FEMALE\OD_20240321124427\OD_20240321124427_X7.9N_Y4.1_Z140.0_ATIEH_Rola_439.mpg")
+# frames_list = []
+# ok = True
+# while ok:
+#     ok, frame = video.read()
+#     frames_list.append(frame)
 
-def import_video(video_path, similarity_threshold=0.92):
+
+def import_video(video_path, mode='one', similarity_threshold=0.92):
     """
     Opens a video file and returns a np.ndarray of averaged frames based on similarity.
+    :param mode: Either 'similar' or 'one'. If 'similar', frames are averaged based on similarity. If 'one', every third frame is read.
     :param video_path: Video file path.
     :param similarity_threshold: Threshold for frame similarity to group frames.
     :return: Averaged frames as np.ndarray.
@@ -38,35 +47,51 @@ def import_video(video_path, similarity_threshold=0.92):
         exit()
     prev_gray_frame = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
     group_frames = [prev_gray_frame]
+    if mode == 'similar':
+        while True:
+            ok, frame = video.read()
+            if not ok:
+                break
+            gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    while True:
-        ok, frame = video.read()
-        if not ok:
-            break
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            # Calculate SSIM between the current frame and the previous frame
+            similarity = ssim(prev_gray_frame, gray_frame)
 
-        # Calculate SSIM between the current frame and the previous frame
-        similarity = ssim(prev_gray_frame, gray_frame)
+            if similarity >= similarity_threshold:
+                # If frames are similar, add to the current group
+                group_frames.append(gray_frame)
+            else:
+                # If frames are not similar, average the current group and start a new group
+                group_avg = np.mean(group_frames, axis=0).astype("uint8")
+                frames_list.append(group_avg)
+                group_frames = [gray_frame]
 
-        if similarity >= similarity_threshold:
-            # If frames are similar, add to the current group
-            group_frames.append(gray_frame)
-        else:
-            # If frames are not similar, average the current group and start a new group
+            prev_gray_frame = gray_frame
+
+        # Average the last group of frames
+        if group_frames:
             group_avg = np.mean(group_frames, axis=0).astype("uint8")
             frames_list.append(group_avg)
-            group_frames = [gray_frame]
 
-        prev_gray_frame = gray_frame
+        video.release()
 
-    # Average the last group of frames
-    if group_frames:
-        group_avg = np.mean(group_frames, axis=0).astype("uint8")
-        frames_list.append(group_avg)
+        return np.array(frames_list).astype("uint8")  # Output array of frames
 
-    video.release()
+    elif mode == 'one':
+        while True:
+            triplet_frames = []
+            for _ in range(3):
+                ok, frame = video.read()
+                if not ok:
+                    break
+                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                triplet_frames.append(gray_frame)
+            frames_list.append(triplet_frames[1])
+            if not ok:
+                break
+        video.release()
 
-    return np.array(frames_list).astype("uint8")  # Output array of frames
+        return np.array(frames_list).astype("uint8")  # Output array of frames
 
 
 # def import_video_manual(video_path):
@@ -115,9 +140,10 @@ def import_video(video_path, similarity_threshold=0.92):
 #     return np.array(frames_list).astype("uint8")  # Output array of frames
 
 
-def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
+def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36, blur=True):
     """
     Calculates the sharpness of a frame or frame stack using a specified metric.
+    :param blur: If True, the input frames will be blurred using a Gaussian filter to reduce the noise level.
     :param frames: Input frame as np.ndarray.
     :param metric: Can be either 'variance_of_gray', 'dom', 'variance_of_laplacian'.
     :param window_size: Size of window for local variance of gray.
@@ -125,6 +151,8 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
     """
     if len(frames.shape) == 2:
         # If a single frame is given
+        if blur:
+            frames = cv2.GaussianBlur(frames, (5, 5), 0)
         if metric == 'variance_of_gray':
             # Determine the local gray level variance in a window https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=903548
             height, width = frames.shape
@@ -146,7 +174,9 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36):
             return var_of_lap
     elif len(frames.shape) == 3:
         # If a frame stack is given
-        return [calculate_sharpness(f, metric, window_size) for f in frames]
+        if blur:
+            frames = [cv2.GaussianBlur(f, (5, 5), 0) for f in frames]
+            return [calculate_sharpness(f, metric, window_size) for f in frames]
     else:
         raise ValueError("Invalid input shape")
 
@@ -197,7 +227,7 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
         plt.close(fig)
         print(f"Saved figure as {path}")
         # show_frame(image, sharpness, frame_number, note, save=False)
-    
+
     plt.show()
 
 
@@ -258,7 +288,7 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
     if reference == 'previous':
         # Register to previous frame in the stack
         # Find the sharpest frames and add them to a list
-        selected_frames_indices = [i for i, var in enumerate(sharpness) if var < threshold]  # Select frames above threshold
+        selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]  # Select frames above threshold
         selected_frames = frames[selected_frames_indices]  # Add the selected frames to the list. The frames are in chronological order
 
         # Perform registration
@@ -268,9 +298,9 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
     elif reference == 'best':
         # Register to the sharpest frame
         # Find the sharpest frame and move it to the first position in the stack
-        best_frame_index = np.argmin(sharpness)  # Find sharpest frame
+        best_frame_index = np.argmax(sharpness)  # Find sharpest frame
         selected_frames = frames[best_frame_index]  # Add the sharpest frame to the array in position 0
-        selected_frames_indices = [i for i, var in enumerate(sharpness) if var < threshold]  # Select frames above threshold
+        selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]  # Select frames above threshold
         selected_frames_indices.remove(best_frame_index)  # Remove the sharpest frame from the indices list (it's already in selected_frames)
         selected_frames = np.vstack((selected_frames[np.newaxis, ...], frames[selected_frames_indices]))  # Add the selected frames to the list. The sharpest frame is in position 0, followed by the selected frames in chronological order
 
