@@ -4,24 +4,13 @@ import matplotlib.pyplot as plt
 import skimage.restoration
 import torch
 from pystackreg import StackReg
-from dom import DOM
 import piq
 from skimage.color import rgb2gray
 from skimage.metrics import structural_similarity as ssim
 from skimage.measure import shannon_entropy
 
 # pip install -r requirements.txt
-SHARPNESS_METRIC = 'variance_of_gray'  # Choose between 'variance_of_gray', 'dom' or 'variance_of_laplacian'
-if SHARPNESS_METRIC == 'dom':
-    iqa = DOM()  # Initialize DOM
-
-# Manual video import
-# video = cv2.VideoCapture("G:\PapyrusSorted\ATIEH_Rola_19900524_FEMALE\OD_20240321124427\OD_20240321124427_X7.9N_Y4.1_Z140.0_ATIEH_Rola_439.mpg")
-# frames_list = []
-# ok = True
-# while ok:
-#     ok, frame = video.read()
-#     frames_list.append(frame)
+SHARPNESS_METRIC = 'var_of_laplacian'  # Choose between 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'
 
 
 def import_video(video_path, mode='one', similarity_threshold=0.92):
@@ -94,58 +83,12 @@ def import_video(video_path, mode='one', similarity_threshold=0.92):
         return np.array(frames_list).astype("uint8")  # Output array of frames
 
 
-# def import_video_manual(video_path):
-#     """
-#     Opens a video file and returns a np.ndarray of valid frames (4 averaged initial frames, then averaged triplets of frames).
-#     :param video_path: Video file path.
-#     :return: Valid frames as np.ndarray.
-#     """
-#     # Open the video file
-#     video = cv2.VideoCapture(video_path)
-#
-#     if not video.isOpened():
-#         print("Error opening video file")
-#         exit()
-#     frames_list = []
-#
-#     # Read and average the first 4 frames
-#     initial_frames = []
-#     for _ in range(4):
-#         ok, frame = video.read()
-#         if not ok:
-#             print("Cannot read video file")
-#             exit()
-#         gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-#
-#         initial_frames.append(gray_frame)
-#     initial_avg = np.mean(initial_frames, axis=0).astype("uint8")
-#     frames_list.append(initial_avg)
-#
-#     # Read and average every triplet of frames
-#     while True:
-#         triplet_frames = []
-#         for _ in range(3):
-#             ok, frame = video.read()
-#             if not ok:
-#                 break
-#             gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-#             triplet_frames.append(gray_frame)
-#         if len(triplet_frames) < 3:
-#             break
-#         triplet_avg = np.mean(triplet_frames, axis=0)
-#         frames_list.append(triplet_avg)
-#
-#     video.release()
-#
-#     return np.array(frames_list).astype("uint8")  # Output array of frames
-
-
 def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36, blur=True):
     """
     Calculates the sharpness of a frame or frame stack using a specified metric.
     :param blur: If True, the input frames will be blurred using a Gaussian filter to reduce the noise level.
     :param frames: Input frame as np.ndarray.
-    :param metric: Can be either 'variance_of_gray', 'dom', 'variance_of_laplacian'.
+    :param metric: Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'.
     :param window_size: Size of window for local variance of gray.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
@@ -153,7 +96,7 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36, blur=Tr
         # If a single frame is given
         if blur:
             frames = cv2.GaussianBlur(frames, (5, 5), 0)
-        if metric == 'variance_of_gray':
+        if metric == 'loc_var_of_gray':
             # Determine the local gray level variance in a window https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=903548
             height, width = frames.shape
             local_variances = []
@@ -165,18 +108,29 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36, blur=Tr
                     local_variances.append(np.var(window))
             var_of_gray = np.mean(local_variances)
             return var_of_gray
-        elif metric == 'dom':
-            # Using DOM https://projet.liris.cnrs.fr/imagine/pub/proceedings/ICPR-2012/media/files/0043.pdf
-            dom = iqa.get_sharpness(frames) ** 4
-            return -dom  # -dom -> lower values = better
-        elif metric == 'variance_of_laplacian':
+        elif metric == 'var_of_laplacian':
             var_of_lap = cv2.Laplacian(frames, cv2.CV_64F).var()
             return var_of_lap
+        elif metric == 'tenengrad':
+            sobel_x = cv2.Sobel(frames, cv2.CV_64F, 1, 0, ksize=3)
+            sobel_y = cv2.Sobel(frames, cv2.CV_64F, 0, 1, ksize=3)
+            gradient = sobel_x ** 2 + sobel_y ** 2
+            tenengrad = np.mean(gradient)
+            return tenengrad
+        elif metric == 'var_of_tenengrad':
+            sobel_x = cv2.Sobel(frames, cv2.CV_64F, 1, 0, ksize=3)
+            sobel_y = cv2.Sobel(frames, cv2.CV_64F, 0, 1, ksize=3)
+            gradient = sobel_x**2 + sobel_y**2
+            var_of_tenengrad = np.var(gradient)
+            return var_of_tenengrad
+        else:
+            raise ValueError("Invalid metric parameter")
+
     elif len(frames.shape) == 3:
         # If a frame stack is given
-        if blur:
-            frames = [cv2.GaussianBlur(f, (5, 5), 0) for f in frames]
-            return [calculate_sharpness(f, metric, window_size) for f in frames]
+        # if blur:
+        #     frames = [cv2.GaussianBlur(f, (5, 5), 0) for f in frames]
+        return [calculate_sharpness(f, metric, window_size) for f in frames]
     else:
         raise ValueError("Invalid input shape")
 
@@ -197,7 +151,7 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
 
     if sharpness is None:
         try:
-            sharpness = calculate_sharpness(image)
+            sharpness = calculate_sharpness(image, blur=False)
         except:
             sharpness = 0
 
@@ -274,21 +228,40 @@ def crop_to_intersection(frames, threshold=0):
     return cropped_images
 
 
-def register_cumulate(frames, sharpness, threshold, reference='previous', cumulate=True, crop=False):
+def register_cumulate(frames, sharpness, threshold=None, reference='best', cumulate=True, crop=True):
     """
     Registers the sharpest frames and optionally averages them to reduce noise.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to the previous frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
     :param frames: Frames as np.ndarray.
     :param sharpness: List of sharpness values for frames.
-    :param threshold: Threshold for selecting the sharpest frames.
+    :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected). If not provided, the threshold is calculated automatically.
     :param cumulate: Controls whether to average the registered frames.
     :param crop: Controls whether to crop the registered frames to their intersection.
     :return: If cumulate is False, returns the registered frame stack as np.ndarray. If cumulate is True, returns the cumulated image (np.ndarray) alongside a note (string).
     """
+    if threshold is None:
+        # Automatically determine the threshold if none is given
+        if SHARPNESS_METRIC == 'loc_var_of_gray':
+            threshold = min(sharpness) + 0.8 * (max(sharpness) - min(sharpness))
+        elif SHARPNESS_METRIC == 'var_of_laplacian':
+            threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
+        elif SHARPNESS_METRIC == 'tenengrad':
+            threshold = min(sharpness) + 0.65 * (max(sharpness) - min(sharpness))
+        elif SHARPNESS_METRIC == 'var_of_tenengrad':
+            threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
+    elif threshold < 0 or threshold > 1:
+        raise ValueError("Threshold must be between 0 and 1")
+    else:
+        threshold = min(sharpness) + threshold * (max(sharpness) - min(sharpness))
+
+    # If only one frame is above the threshold, return the sharpest frame
+    if sum([1 for var in sharpness if var >= threshold]) <= 1:
+        return frames[np.argmax(sharpness)], "Only one frame above threshold, no registration performed"
+
     if reference == 'previous':
         # Register to previous frame in the stack
         # Find the sharpest frames and add them to a list
-        selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]  # Select frames above threshold
+        selected_frames_indices = [i for i, var in enumerate(sharpness) if var >= threshold]  # Select frames above threshold
         selected_frames = frames[selected_frames_indices]  # Add the selected frames to the list. The frames are in chronological order
 
         # Perform registration
@@ -300,7 +273,7 @@ def register_cumulate(frames, sharpness, threshold, reference='previous', cumula
         # Find the sharpest frame and move it to the first position in the stack
         best_frame_index = np.argmax(sharpness)  # Find sharpest frame
         selected_frames = frames[best_frame_index]  # Add the sharpest frame to the array in position 0
-        selected_frames_indices = [i for i, var in enumerate(sharpness) if var > threshold]  # Select frames above threshold
+        selected_frames_indices = [i for i, var in enumerate(sharpness) if var >= threshold]  # Select frames above threshold
         selected_frames_indices.remove(best_frame_index)  # Remove the sharpest frame from the indices list (it's already in selected_frames)
         selected_frames = np.vstack((selected_frames[np.newaxis, ...], frames[selected_frames_indices]))  # Add the selected frames to the list. The sharpest frame is in position 0, followed by the selected frames in chronological order
 
