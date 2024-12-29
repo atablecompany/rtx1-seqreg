@@ -6,20 +6,16 @@ import torch
 from pystackreg import StackReg
 import piq
 from skimage.color import rgb2gray
-from skimage.metrics import structural_similarity as ssim
-from skimage.measure import shannon_entropy
 
 # pip install -r requirements.txt
 SHARPNESS_METRIC = 'var_of_laplacian'  # Choose between 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'
 
 
-def import_video(video_path, mode='one', similarity_threshold=0.92):
+def import_video(video_path):
     """
-    Opens a video file and returns a np.ndarray of averaged frames based on similarity.
-    :param mode: Either 'similar' or 'one'. If 'similar', frames are averaged based on similarity. If 'one', every third frame is read.
+    Opens a video file and returns a np.ndarray of non-repeated frames. Only every third frame of the video file is saved.
     :param video_path: Video file path.
-    :param similarity_threshold: Threshold for frame similarity to group frames.
-    :return: Averaged frames as np.ndarray.
+    :return: Reduced frame stack as np.ndarray.
     """
     # Open the video file
     video = cv2.VideoCapture(video_path)
@@ -34,68 +30,39 @@ def import_video(video_path, mode='one', similarity_threshold=0.92):
     if not ok:
         print("Cannot read video file")
         exit()
-    prev_gray_frame = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
-    group_frames = [prev_gray_frame]
-    if mode == 'similar':
-        while True:
+    # Read frames and save every third frame
+    while True:
+        triplet_frames = []
+        for _ in range(3):
             ok, frame = video.read()
             if not ok:
                 break
             gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            triplet_frames.append(gray_frame)
+        frames_list.append(triplet_frames[1])
+        if not ok:
+            break
+    video.release()
 
-            # Calculate SSIM between the current frame and the previous frame
-            similarity = ssim(prev_gray_frame, gray_frame)
-
-            if similarity >= similarity_threshold:
-                # If frames are similar, add to the current group
-                group_frames.append(gray_frame)
-            else:
-                # If frames are not similar, average the current group and start a new group
-                group_avg = np.mean(group_frames, axis=0).astype("uint8")
-                frames_list.append(group_avg)
-                group_frames = [gray_frame]
-
-            prev_gray_frame = gray_frame
-
-        # Average the last group of frames
-        if group_frames:
-            group_avg = np.mean(group_frames, axis=0).astype("uint8")
-            frames_list.append(group_avg)
-
-        video.release()
-
-        return np.array(frames_list).astype("uint8")  # Output array of frames
-
-    elif mode == 'one':
-        while True:
-            triplet_frames = []
-            for _ in range(3):
-                ok, frame = video.read()
-                if not ok:
-                    break
-                gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                triplet_frames.append(gray_frame)
-            frames_list.append(triplet_frames[1])
-            if not ok:
-                break
-        video.release()
-
-        return np.array(frames_list).astype("uint8")  # Output array of frames
+    return np.array(frames_list).astype("uint8")  # Output array of frames
 
 
-def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36, blur=True):
+def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True):
     """
     Calculates the sharpness of a frame or frame stack using a specified metric.
     :param blur: If True, the input frames will be blurred using a Gaussian filter to reduce the noise level.
     :param frames: Input frame as np.ndarray.
     :param metric: Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'.
-    :param window_size: Size of window for local variance of gray.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
+    window_size = 36  # Window size for local variance of gray
+
     if len(frames.shape) == 2:
         # If a single frame is given
+        if frames.ndim == 3:
+            frames = rgb2gray(frames)
         if blur:
-            frames = cv2.GaussianBlur(frames, (5, 5), 0)
+            frames = cv2.GaussianBlur(frames, (7, 7), 0)
         if metric == 'loc_var_of_gray':
             # Determine the local gray level variance in a window https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=903548
             height, width = frames.shape
@@ -127,25 +94,26 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, window_size=36, blur=Tr
             raise ValueError("Invalid metric parameter")
 
     elif len(frames.shape) == 3:
-        # If a frame stack is given
-        # if blur:
-        #     frames = [cv2.GaussianBlur(f, (5, 5), 0) for f in frames]
-        return [calculate_sharpness(f, metric, window_size) for f in frames]
+        return [calculate_sharpness(f, metric) for f in frames]
     else:
         raise ValueError("Invalid input shape")
 
 
-def show_frame(image, sharpness=None, frame_number=None, note="", save=False, filename="out.png"):
+def show_frame(image, overlay=True, sharpness=None, frame_number=None, note="", save=False, filename="out.png"):
     """
     Displays a frame with a title overlay. Optionally saves the frame as a .png file.
     :param image: Input frame as np.ndarray.
+    :param overlay: If True, the title will be overlaid on the image. If False, only the image will be saved. This parameter does nothing if save is False.
     :param sharpness: Sharpness value to be printed in the title. If None, it will be calculated according to the SHARPNESS_METRIC global variable.
     :param frame_number: Frame index to be printed in the title.
     :param note: Optional note to be printed in the title.
     :param save: If True, the frame will be saved as a .png file.
     :param filename: Name of the file to be saved.
-    :return:
     """
+    # Convert RGB input image to grayscale
+    if image.ndim == 3:
+        image = rgb2gray(image)
+
     dpi = 100  # Use your preferred DPI for display
     height, width = image.shape
 
@@ -155,8 +123,6 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
         except:
             sharpness = 0
 
-    quality = assess_quality(image)
-    entropy = shannon_entropy(image)
     # Create a figure matching the original image size (1:1)
     fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
 
@@ -168,29 +134,31 @@ def show_frame(image, sharpness=None, frame_number=None, note="", save=False, fi
 
     # Overlay the title on top of the image
     if frame_number is None:
-        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}, quality={quality:.0f}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     else:
-        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}, entropy={entropy}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note}\nsharpness={sharpness:.2f}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     # Hide axis
     plt.axis('off')
 
     if save:
-        # Save the figure
-        path = f"C:/Users/tengl/PycharmProjects/dp/{filename}"
-        plt.savefig(path, bbox_inches='tight', pad_inches=0)
-        plt.close(fig)
-        print(f"Saved figure as {path}")
-        # show_frame(image, sharpness, frame_number, note, save=False)
-
+        if overlay:
+            # Save the figure including overlay
+            plt.savefig(filename, bbox_inches='tight', pad_inches=0)
+            plt.close(fig)
+            print(f"Saved figure as {filename}")
+        else:
+            # Save the image without overlay
+            cv2.imwrite(filename, image)
+            print(f"Saved image as {filename}")
+            return
     plt.show()
 
 
-def crop_to_intersection(frames, threshold=0):
+def crop_to_intersection(frames):
     """
     Crops a stack of frames to their intersection.
     :param frames: np.ndarray of registered images.
-    :param threshold: Pixel value below which a pixel is considered black.
-    :return:
+    :return: Cropped images as np.ndarray.
     """
     # TODO: implement rotation
     # # Start with the maximum possible bounding box
@@ -217,7 +185,7 @@ def crop_to_intersection(frames, threshold=0):
     mask = np.ones_like(frames[0], dtype=bool)
 
     for frame in frames:
-        mask &= (frame > threshold)
+        mask &= (frame > 0)
 
     # Find the bounding box of the remaining mask
     y_indices, x_indices = np.where(mask)
@@ -228,26 +196,29 @@ def crop_to_intersection(frames, threshold=0):
     return cropped_images
 
 
-def register_cumulate(frames, sharpness, threshold=None, reference='best', cumulate=True, crop=True):
+def register_cumulate(frames, sharpness, metric=SHARPNESS_METRIC, threshold=None, reference='best', cumulate=True, crop=True):
     """
     Registers the sharpest frames and optionally averages them to reduce noise.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to the previous frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
     :param frames: Frames as np.ndarray.
     :param sharpness: List of sharpness values for frames.
+    :param metric: Sharpness metric to be used for
     :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected). If not provided, the threshold is calculated automatically.
     :param cumulate: Controls whether to average the registered frames.
     :param crop: Controls whether to crop the registered frames to their intersection.
     :return: If cumulate is False, returns the registered frame stack as np.ndarray. If cumulate is True, returns the cumulated image (np.ndarray) alongside a note (string).
     """
+    # TODO: Move this to calculate_sharpness
+    sharpness_metrics = ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad']
     if threshold is None:
         # Automatically determine the threshold if none is given
-        if SHARPNESS_METRIC == 'loc_var_of_gray':
+        if metric == 'loc_var_of_gray':
             threshold = min(sharpness) + 0.8 * (max(sharpness) - min(sharpness))
-        elif SHARPNESS_METRIC == 'var_of_laplacian':
+        elif metric == 'var_of_laplacian':
             threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
-        elif SHARPNESS_METRIC == 'tenengrad':
+        elif metric == 'tenengrad':
             threshold = min(sharpness) + 0.65 * (max(sharpness) - min(sharpness))
-        elif SHARPNESS_METRIC == 'var_of_tenengrad':
+        elif metric == 'var_of_tenengrad':
             threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
     elif threshold < 0 or threshold > 1:
         raise ValueError("Threshold must be between 0 and 1")
@@ -255,8 +226,19 @@ def register_cumulate(frames, sharpness, threshold=None, reference='best', cumul
         threshold = min(sharpness) + threshold * (max(sharpness) - min(sharpness))
 
     # If only one frame is above the threshold, return the sharpest frame
-    if sum([1 for var in sharpness if var >= threshold]) <= 1:
-        return frames[np.argmax(sharpness)], "Only one frame above threshold, no registration performed"
+    if sum([1 for var in sharpness if var >= threshold]) <= 1 and threshold == 1:
+        return frames[np.argmax(sharpness)], "Threshold set too high, no registration performed"
+
+    # If few sharp frames are detected, switch to a different sharpness metric and try again
+    if sum([1 for var in sharpness if var >= threshold]) <= 2 and threshold != 1:
+        new_sharpness = calculate_sharpness(frames, metric=sharpness_metrics[(sharpness_metrics.index(metric) + 1) % len(sharpness_metrics)])
+        # Check if this iteration is the last available sharpness metric
+        if metric == sharpness_metrics[-1]:
+            # If the last sharpness metric is reached, return the sharpest frame
+            return frames[np.argmax(sharpness)], "Detected few sharp frames, no registration performed"
+        # If this iteration is not the last available sharpness metric, switch to the next one
+        print("Detected few sharp frames, switching sharpness metric")
+        return register_cumulate(frames, new_sharpness, metric=sharpness_metrics[(sharpness_metrics.index(metric) + 1) % len(sharpness_metrics)], reference=reference, cumulate=cumulate, crop=crop)
 
     if reference == 'previous':
         # Register to previous frame in the stack
@@ -289,10 +271,12 @@ def register_cumulate(frames, sharpness, threshold=None, reference='best', cumul
         # Crop images to their intersection
         out_rigid_stack = crop_to_intersection(out_rigid_stack)
         cum_note += "Cropped "
+    # TODO: Move this to a separate function
     if cumulate:
         # Average registered frames
         cum = np.mean(out_rigid_stack, axis=0)
-        cum_note += f"Mean of {selected_frames.shape[0]} registered frames ({reference})"
+        cum_note += (f"mean of {selected_frames.shape[0]} registered frames using ({reference}) frame as reference \n"
+                     f"Sharpness metric for registration: {metric}")
         return cum, cum_note
     else:
         return out_rigid_stack
@@ -308,22 +292,70 @@ def denoise(image, sigma=0.7):
     return skimage.restoration.denoise_bilateral(image, sigma_spatial=sigma)
 
 
-def assess_quality(image):
+def normalize(image):
     """
-    Evaluates the quality of an image using the BRISQUE metric.
+    Normalizes an image to the range [0, 255].
     :param image: Input image as np.ndarray.
-    :return: BRISQUE index from 0 to 100. Lower scores indicate better quality.
+    :return: Normalized image as np.ndarray.
     """
-    # Convert RGB input image to grayscale
+    return cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
+
+
+def assess_quality(image, path, note="", generate_report=True):
+    """
+    Calculates the BRISQUE index for an image and optionally compares it to a reference image.
+    :param image: Processed image as np.ndarray.
+    :param path: Path to the reference image.
+    :param note: Note generated by the registration function.
+    :return:
+    """
+    reference = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+
+    # Convert to grayscale if necessary
     if image.ndim == 3:
         image = rgb2gray(image)
 
-    # Ensure all pixel values are non-negative
-    if np.min(image) < 0:
-        image = image + abs(np.min(image))
+    # Ensure all pixel values are in 0-255 range
+    if np.min(image) < 0 or np.max(image) > 255:
+        image = normalize(image)
 
-    intensity_range = np.max(image)
+    # Calculate SNR
+    snr_image = np.mean(image) / np.std(image)
     # Convert image to 4D tensor
     image = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(image), 0), 0)
-    score = piq.brisque(image, data_range=intensity_range)
-    return score.item()
+    # Calculate BRISQUE index
+    brisque_image = piq.brisque(image, data_range=255).item()
+
+    if reference is not None:
+        # Convert to grayscale if necessary
+        if reference.ndim == 3:
+            reference = rgb2gray(reference)
+
+        # Ensure all pixel values are in 0-255 range
+        reference = normalize(reference)
+
+        # Calculate SNR
+        snr_reference = np.mean(reference) / np.std(reference)
+        # Convert reference to 4D tensor
+        reference = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(reference), 0), 0)
+        # Calculate BRISQUE index
+        brisque_reference = piq.brisque(reference, data_range=255).item()
+
+    else:
+        # If no reference is provided, return None
+        snr_reference = None
+        brisque_reference = None
+
+    # Create a text file containing the quality values
+    if generate_report:
+        with open(path[:-4] + "_report.txt", "w") as f:
+            f.write(f"Processed file \"{path[:-4] + ".mpg"}\": \n"
+                    f"Generated processed image as {note} \n"
+                    f"\n"
+                    f"Processed image: \n"
+                    f"BRISQUE index = {brisque_image:.2f}\n"
+                    f"\n"
+                    f"Reference image: \n"
+                    f"BRISQUE index = {brisque_reference:.2f}\n")
+
+    return [brisque_image, brisque_reference], [snr_image, snr_reference]
