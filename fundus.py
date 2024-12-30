@@ -49,17 +49,18 @@ def import_video(video_path):
     video.release()
 
     # Only save every third frame
-    frames_reduced = frames[::3]
+    frames_reduced = frames[2::3]
 
     return np.array(frames_reduced).astype("uint8")  # Output array of frames
 
 
-def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True):
+def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True, threshold=None):
     """
     Calculates the sharpness of a frame or frame stack using a specified metric.
     :param blur: If True, the input frames will be blurred using a Gaussian filter to reduce the noise level.
     :param frames: Input frame as np.ndarray.
     :param metric: Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'.
+    :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected). If not provided, the threshold is calculated automatically.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
     global note
@@ -102,10 +103,70 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True):
             raise ValueError("Invalid metric parameter")
 
     elif len(frames.shape) == 3:
+        # If a stack of frames is given
         note += f"Sharpness metric used: {metric}\n"
-        return [calculate_sharpness(f, metric) for f in frames]
+        # Calculate sharpness for each frame in the stack by calling the function recursively
+        sharpness = [calculate_sharpness(f, metric) for f in frames]
+        return sharpness
+
     else:
         raise ValueError("Invalid input shape")
+
+
+def select_frames(frames, sharpness, threshold=None, metric=SHARPNESS_METRIC):
+    """
+    Selects sharp frames based on a threshold.
+    :param frames: Input frame stack as np.ndarray.
+    :param sharpness: List of sharpness values for frames.
+    :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected). If not provided, the threshold is calculated automatically.
+    :param metric: Sharpness metric used by the calculate_sharpness function. Used for automatic threshold calculation.
+    :return: Selected frames as np.ndarray.
+    """
+    global note
+    sharpness_metrics = ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad']
+
+    # If no threshold is given, calculate it automatically
+    if threshold is None:
+        if metric == 'loc_var_of_gray':
+            threshold = min(sharpness) + 0.8 * (max(sharpness) - min(sharpness))
+        elif metric == 'var_of_laplacian':
+            threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
+        elif metric == 'tenengrad':
+            threshold = min(sharpness) + 0.65 * (max(sharpness) - min(sharpness))
+        elif metric == 'var_of_tenengrad':
+            threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
+    elif threshold < 0 or threshold > 1:
+        raise ValueError("Threshold must be between 0 and 1")
+    else:
+        threshold = min(sharpness) + threshold * (max(sharpness) - min(sharpness))
+
+    # Detect ineffective sharpness metric
+    # If only one frame is above the threshold, return the sharpest frame
+    if sum([1 for var in sharpness if var >= threshold]) <= 1 and threshold == 1:
+        note += "Only one frame above threshold found, no registration performed\n"
+        return frames[np.argmax(sharpness)]
+
+    # If few sharp frames are detected, switch to a different sharpness metric and try again
+    if sum([1 for var in sharpness if var >= threshold]) <= 2 and threshold != 1:
+        # Check if this iteration is the last available sharpness metric
+        if metric == sharpness_metrics[-1]:
+            # If the last sharpness metric is reached, return the sharpest frame
+            note += "Few sharp frames detected. May not register\n"
+            print("Few sharp frames detected. May not register")
+            return frames[np.where(sharpness >= threshold)]
+        else:
+            # If this iteration is not the last available sharpness metric, switch to the next one
+            note += "Few sharp frames detected, switching to another sharpness metric...\n"
+            print("Few sharp frames detected, switching to another sharpness metric")
+            new_metric = sharpness_metrics[(sharpness_metrics.index(metric) + 1) % len(sharpness_metrics)]
+            # Get a new list of sharpness values
+            new_sharpness = calculate_sharpness(frames, metric=new_metric)
+            # Recursively call the function with the new sharpness values
+            return select_frames(frames, new_sharpness, metric=new_metric)
+
+    # Make a list of frames above the threshold and return it
+    selected_frames = frames[np.where(sharpness >= threshold)]
+    return selected_frames
 
 
 def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
@@ -164,28 +225,6 @@ def crop_to_intersection(frames):
     :param frames: np.ndarray of registered images.
     :return: Cropped images as np.ndarray.
     """
-    # TODO: implement rotation
-    # # Start with the maximum possible bounding box
-    # h, w = frames[0].shape[:2]
-    # x_min, x_max = 0, w - 1
-    # y_min, y_max = 0, h - 1
-    #
-    # for frame in frames:
-    #     # Find non-black pixels in the current image
-    #     non_black_mask = (frame > threshold)
-    #     y_indices, x_indices = np.where(non_black_mask)
-    #
-    #     # Update the bounding box
-    #     if len(x_indices) > 0 and len(y_indices) > 0:  # Ensure there are non-black pixels
-    #         x_min = max(x_min, x_indices.min())
-    #         x_max = min(x_max, x_indices.max())
-    #         y_min = max(y_min, y_indices.min())
-    #         y_max = min(y_max, y_indices.max())
-    #     else:
-    #         raise ValueError("One of the images is completely black within the threshold!")
-    #
-    # cropped_images = [frame[y_min:y_max + 1, x_min:x_max + 1] for frame in frames]
-    # return cropped_images
     mask = np.ones_like(frames[0], dtype=bool)
 
     for frame in frames:
@@ -200,90 +239,50 @@ def crop_to_intersection(frames):
     return cropped_images
 
 
-def register(frames, sharpness, metric=SHARPNESS_METRIC, threshold=None, reference='best', crop=True):
+def register(selected_frames, sharpness, reference='best', crop=True):
     """
     Registers the sharpest frames and returns a stack of registered and optionally cropped frames.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to the previous frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
-    :param frames: Frames as np.ndarray.
+    :param selected_frames: Selected sharp frames as np.ndarray.
     :param sharpness: List of sharpness values for frames.
-    :param metric: Sharpness metric to be used for
-    :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected). If not provided, the threshold is calculated automatically.
     :param crop: Controls whether to crop the registered frames to their intersection.
     :return: If cumulate is False, returns the registered frame stack as np.ndarray. If cumulate is True, returns the cumulated image (np.ndarray) alongside a note (string).
     """
     global note
-    # TODO: Move this to calculate_sharpness
-    sharpness_metrics = ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad']
-    if threshold is None:
-        # Automatically determine the threshold if none is given
-        if metric == 'loc_var_of_gray':
-            threshold = min(sharpness) + 0.8 * (max(sharpness) - min(sharpness))
-        elif metric == 'var_of_laplacian':
-            threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
-        elif metric == 'tenengrad':
-            threshold = min(sharpness) + 0.65 * (max(sharpness) - min(sharpness))
-        elif metric == 'var_of_tenengrad':
-            threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
-    elif threshold < 0 or threshold > 1:
-        raise ValueError("Threshold must be between 0 and 1")
+    if selected_frames.ndim == 2:
+        # If only one frame is given, return it
+        note += "Only one frame given, nothing to register\n"
+        print("Only one frame given, nothing to register")
+        return selected_frames
     else:
-        threshold = min(sharpness) + threshold * (max(sharpness) - min(sharpness))
+        if reference == 'previous':
+            # Register to previous frame in the stack
+            # Find the sharpest frames and add them to a list
+            # Perform registration
+            sr = StackReg(StackReg.RIGID_BODY)
+            out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
+            out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
+        elif reference == 'best':
+            # Register to the sharpest frame
+            # Find the sharpest frame and move it to the first position in the stack
+            best_frame_index = np.argmax(sharpness)  # Find the sharpest frame
+            # Move the sharpest frame to the first position in the stack
+            selected_frames = np.roll(selected_frames, -best_frame_index, axis=0)
 
-    # If only one frame is above the threshold, return the sharpest frame
-    if sum([1 for var in sharpness if var >= threshold]) <= 1 and threshold == 1:
-        note += "Only one frame above threshold found, no registration performed\n"
-        return frames[np.argmax(sharpness)]
-
-    # If few sharp frames are detected, switch to a different sharpness metric and try again
-    if sum([1 for var in sharpness if var >= threshold]) <= 2 and threshold != 1:
-        # Check if this iteration is the last available sharpness metric
-        if metric == sharpness_metrics[-1]:
-            # If the last sharpness metric is reached, return the sharpest frame
-            note += "Few sharp frames detected, no registration performed\n"
-            print("Few sharp frames detected, no registration performed")
-            return frames[np.argmax(sharpness)]
+            # Perform registration
+            sr = StackReg(StackReg.RIGID_BODY)
+            out_rigid_stack = sr.register_transform_stack(selected_frames, reference='first')
+            out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
         else:
-            # If this iteration is not the last available sharpness metric, switch to the next one
-            note += "Few sharp frames detected, switching to another sharpness metric...\n"
-            print("Few sharp frames detected, switching to another sharpness metric")
-            new_metric = sharpness_metrics[(sharpness_metrics.index(metric) + 1) % len(sharpness_metrics)]
-            new_sharpness = calculate_sharpness(frames, metric=new_metric)
-            return register(frames, new_sharpness, metric=new_metric, reference=reference, crop=crop)
+            raise ValueError("Invalid reference")
 
+        note += "Output image given by: "
+        if crop:
+            # Crop images to their intersection
+            out_rigid_stack = crop_to_intersection(out_rigid_stack)
+            note += "cropped "
 
-
-    if reference == 'previous':
-        # Register to previous frame in the stack
-        # Find the sharpest frames and add them to a list
-        selected_frames_indices = [i for i, var in enumerate(sharpness) if var >= threshold]  # Select frames above threshold
-        selected_frames = frames[selected_frames_indices]  # Add the selected frames to the list. The frames are in chronological order
-        # Perform registration
-        sr = StackReg(StackReg.RIGID_BODY)
-        out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
-        out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
-    elif reference == 'best':
-        # Register to the sharpest frame
-        # Find the sharpest frame and move it to the first position in the stack
-        best_frame_index = np.argmax(sharpness)  # Find sharpest frame
-        selected_frames = frames[best_frame_index]  # Add the sharpest frame to the array in position 0
-        selected_frames_indices = [i for i, var in enumerate(sharpness) if var >= threshold]  # Select frames above threshold
-        selected_frames_indices.remove(best_frame_index)  # Remove the sharpest frame from the indices list (it's already in selected_frames)
-        selected_frames = np.vstack((selected_frames[np.newaxis, ...], frames[selected_frames_indices]))  # Add the selected frames to the list. The sharpest frame is in position 0, followed by the selected frames in chronological order
-
-        # Perform registration
-        sr = StackReg(StackReg.RIGID_BODY)
-        out_rigid_stack = sr.register_transform_stack(selected_frames, reference='first')
-        out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
-    else:
-        raise ValueError("Invalid reference")
-
-    note += "Output image given by: "
-    if crop:
-        # Crop images to their intersection
-        out_rigid_stack = crop_to_intersection(out_rigid_stack)
-        note += "cropped "
-
-    return out_rigid_stack
+        return out_rigid_stack
 
 
 def cumulate(frames):

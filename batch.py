@@ -1,23 +1,23 @@
 import glob
 import os
 import fundus
-# Control function to process all videos in a directory (including subdirectories)
+# Control script to process all videos in a directory (including subdirectories)
 
 
 def process_video(video_path):
     """
     Process a video file and save the processed image.
     :param video_path: Path to the video file to be processed
-    :return:
     """
-    reference_path = video_path.replace(".mpg", ".png")
-    frames = fundus.import_video(video_path)
-    sharpness = fundus.calculate_sharpness(frames)
-    reg = fundus.register(frames, sharpness, reference='best', crop=True)
-    cum = fundus.cumulate(reg)
-    output_path = video_path.replace(".mpg", "_processed.png")
-    fundus.save_frame(cum, path=output_path)
-    fundus.assess_quality(cum, reference_path)
+    reference_path = video_path.replace(".mpg", ".png")  # Path to the reference .png image
+    frames = fundus.import_video(video_path)  # Import the video file as a numpy array
+    sharpness = fundus.calculate_sharpness(frames)  # Calculate the sharpness of each frame
+    selected_frames = fundus.select_frames(frames, sharpness)  # Select sharp frames
+    reg = fundus.register(selected_frames, sharpness, reference='best', crop=True)  # Perform registration of sharp frames
+    cum = fundus.cumulate(reg)  # Cumulate the registered frames
+    output_path = video_path.replace(".mpg", "_processed.png")  # Path to save the processed image
+    fundus.save_frame(cum, path=output_path)  # Save the processed image
+    fundus.assess_quality(cum, reference_path)  # Generate quality assessment report
 
 
 # Specify the directory containing video files
