@@ -40,15 +40,16 @@ plt.grid(True)
 plt.show()
 
 #%%
-cum, cum_note = fundus.register_cumulate(frames, sharpness, threshold=sharpness_threshold, cumulate=True, reference='best', crop=True)
+reg = fundus.register(frames, sharpness, threshold=sharpness_threshold, reference='best', crop=True)
+cum = fundus.cumulate(reg)
 # registered_stack = fundus.register_cumulate(frames, sharpness, threshold=sharpness_threshold, cumulate=False, reference='best')
 # denoised = fundus.denoise(cum)
 # fundus.show_frame(denoised)
 #%% Average registered frames
 
 # fundus.show_frame(cum, note=cum_note, save=True, filename="cum.png")
-fundus.show_frame(cum, note=cum_note)
-fundus.show_frame(imread(reference_path), note="Reference image")
+fundus.show_frame(cum)
+fundus.show_frame(imread(reference_path), custom_note="Reference image")
 
 # resize reference to the same size as the registered image
 reference = resize(reference, (cum.shape[1], cum.shape[0]))
