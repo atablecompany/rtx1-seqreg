@@ -328,6 +328,7 @@ def assess_quality(image, path, generate_report=True):
     :param path: Path to the reference image.
     :return:
     """
+    # TODO: Když je brisque_image větší než brisque_reference, znovu registrovat ale jako 'previous'
     global note
     reference = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 
