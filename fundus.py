@@ -7,8 +7,8 @@ from pystackreg import StackReg
 import piq
 from skimage.color import rgb2gray
 
-# pip install -r requirements.txt
 SHARPNESS_METRIC = 'var_of_laplacian'  # Choose between 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'
+
 note = ""  # Note to be displayed in the title of the image or printed in the report
 
 
@@ -100,7 +100,7 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True, threshold=No
             var_of_tenengrad = np.var(gradient)
             return var_of_tenengrad
         else:
-            raise ValueError("Invalid metric parameter")
+            raise ValueError("Invalid metric parameter. Supported values are 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'")
 
     elif len(frames.shape) == 3:
         # If a stack of frames is given
