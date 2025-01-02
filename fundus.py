@@ -28,7 +28,6 @@ def import_video(video_path):
         print("Error opening video file")
         exit()
 
-    frames_reduced = []
     frames = []
 
     # Read the first frame
@@ -54,17 +53,15 @@ def import_video(video_path):
     return np.array(frames_reduced).astype("uint8")  # Output array of frames
 
 
-def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True, threshold=None):
+def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True):
     """
     Calculates the sharpness of a frame or frame stack using a specified metric.
     :param blur: If True, the input frames will be blurred using a Gaussian filter to reduce the noise level.
     :param frames: Input frame as np.ndarray.
-    :param metric: Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'.
-    :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected). If not provided, the threshold is calculated automatically.
+    :param metric: Sharpness metric to be used. Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
     global note
-    window_size = 36  # Window size for local variance of gray
 
     if len(frames.shape) == 2:
         # If a single frame is given
@@ -74,6 +71,7 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True, threshold=No
             frames = cv2.GaussianBlur(frames, (7, 7), 0)
         if metric == 'loc_var_of_gray':
             # Determine the local gray level variance in a window https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=903548
+            window_size = 36
             height, width = frames.shape
             local_variances = []
             for y in range(0, height, window_size):
@@ -191,7 +189,7 @@ def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
             sharpness = 0
 
     # Create a figure matching the original image size (1:1)
-    fig = plt.figure(figsize=(width / 100, height / 100), dpi=100)
+    plt.figure(figsize=(width / 100, height / 100), dpi=100)
 
     # Adjust subplot to remove borders
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
@@ -378,5 +376,5 @@ def assess_quality(image, path, generate_report=True):
                     f"\n")
             f.write(f"No reference image provided\n" if reference is None else f"Reference image: \n"
                     f"BRISQUE index = {brisque_reference:.2f}\n")
-    note = ""
+    note = ""  # Reset note
     return [brisque_image, brisque_reference], [snr_image, snr_reference]

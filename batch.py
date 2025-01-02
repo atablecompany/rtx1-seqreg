@@ -1,7 +1,7 @@
+# Control script to process all videos in a directory (including subdirectories)
 import glob
 import os
 import fundus
-# Control script to process all videos in a directory (including subdirectories)
 
 
 def process_video(video_path):
@@ -13,7 +13,7 @@ def process_video(video_path):
     frames = fundus.import_video(video_path)  # Import the video file as a numpy array
     sharpness = fundus.calculate_sharpness(frames)  # Calculate the sharpness of each frame
     selected_frames = fundus.select_frames(frames, sharpness)  # Select sharp frames
-    reg = fundus.register(selected_frames, sharpness, reference='best', crop=True)  # Perform registration of sharp frames
+    reg = fundus.register(selected_frames, sharpness)  # Perform registration of sharp frames
     cum = fundus.cumulate(reg)  # Cumulate the registered frames
     output_path = video_path.replace(".mpg", "_processed.png")  # Path to save the processed image
     fundus.save_frame(cum, path=output_path)  # Save the processed image
