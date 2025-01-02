@@ -8,7 +8,7 @@ from fundus import SHARPNESS_METRIC
 
 
 #%% Import video file
-video_path = "G:\PapyrusSorted\ABDEL_Eman_19860604_FEMALE\OD_20231108153721\OD_20231108153721_X0.0T_Y0.0_Z0.0_ABDEL_Eman_201.mpg"
+video_path = ""
 
 reference_path = video_path.replace(".mpg", ".png")
 reference = rgb2gray(imread(reference_path))

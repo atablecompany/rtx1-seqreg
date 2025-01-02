@@ -21,7 +21,7 @@ def process_video(video_path):
 
 
 # Specify the directory containing video files
-video_directory = "G:\PapyrusSorted"
+video_directory = ""
 video_files = glob.glob(os.path.join(video_directory, "**", "*.mpg"), recursive=True)
 
 # Loop through all files and process each
