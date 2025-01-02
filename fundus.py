@@ -244,7 +244,7 @@ def register(selected_frames, sharpness, reference='best', crop=True):
     :param selected_frames: Selected sharp frames as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param crop: Controls whether to crop the registered frames to their intersection.
-    :return: If cumulate is False, returns the registered frame stack as np.ndarray. If cumulate is True, returns the cumulated image (np.ndarray) alongside a note (string).
+    :return: Registered frame stack as np.ndarray.
     """
     global note
     if selected_frames.ndim == 2:
@@ -324,7 +324,7 @@ def assess_quality(image, path, generate_report=True):
     :param generate_report: Parameter to control whether a report text file is generated.
     :param image: Processed image as np.ndarray.
     :param path: Path to the reference image.
-    :return:
+    :return: BRISQUE index for the processed image and the reference image (if provided). SNR for the processed image and the reference image (if provided).
     """
     # TODO: Když je brisque_image větší než brisque_reference, znovu registrovat ale jako 'previous'
     global note
