@@ -16,7 +16,7 @@ sharpness_metrics = ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of
 assert SHARPNESS_METRIC in sharpness_metrics, "Invalid sharpness metric. Supported values are 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'"
 
 
-note = ""  # Initialize the note to be displayed in the title of the image or printed in the report
+note = ""  # Initialize a note to be displayed in the title of the image or printed in the report
 
 
 def import_video(video_path):
@@ -172,7 +172,6 @@ def select_frames(frames, sharpness, threshold=None, metric=SHARPNESS_METRIC):
     return selected_frames
 
 
-# noinspection PyBroadException
 def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
     """
     Displays a frame with a title overlay.
@@ -442,7 +441,7 @@ def assess_quality(image, path, generate_report=True):
     # Create a text file containing the quality values
     if generate_report:
         with open(path[:-4] + "_report.txt", "w") as f:
-            f.write(f"Processed file: \"{path[:-4] + ".mpg"}\" \n\n"
+            f.write(f"Processed file: \"{path[:-4] + '.mpg'}\" \n\n"
                     f"{note}\n"
                     f"=== Image statistics ===\n"
                     f"Processed image: \n"
