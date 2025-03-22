@@ -8,7 +8,7 @@ from fundus import SHARPNESS_METRIC
 
 
 #%% Import video file
-video_path = ""
+video_path = "G:\PapyrusSorted\ABOU ZEIDAN_Rima_19860110_FEMALE\OD_20240408102742\OD_20240408102742_X2.0N_Y0.0_Z0.0_ABOU ZEIDAN_Rima_314.mpg"
 
 reference_path = video_path.replace(".mpg", ".png")
 reference = rgb2gray(imread(reference_path))
@@ -21,8 +21,8 @@ sharpness_threshold = 0.6
 selected_frames = fundus.select_frames(frames, sharpness)
 
 #%% Show individual frames
-for i in range(len(frames)):
-    fundus.show_frame(frames[i], sharpness=sharpness[i], custom_note=i)
+# for i in range(len(frames)):
+#     fundus.show_frame(frames[i], sharpness=sharpness[i], custom_note=i)
 
 #%% Plot sharpness over frames
 plt.figure(figsize=(10, 6))
@@ -32,16 +32,16 @@ plt.title(f'Sharpness over frames ({SHARPNESS_METRIC})')
 plt.xlabel('Frame index')
 plt.ylabel('Sharpness')
 plt.grid(True)
+# plt.savefig('sharpness_plot.svg', format='svg')
 plt.show()
 
 #%% Perform registration and averaging
-reg = fundus.register(selected_frames, sharpness, reference='best', crop=True)
+reg = fundus.register2(selected_frames, sharpness, reference='best', crop=True)
 cum = fundus.cumulate(reg)
 
 #%% Show result
-
 fundus.show_frame(cum)
-fundus.show_frame(imread(reference_path), custom_note="Reference image")
+fundus.show_frame(imread(reference_path), custom_note="Reference image\n")
 
 brisque_image, brisque_reference = fundus.assess_quality(cum, path=reference_path, generate_report=False)[0]
 print("BRISQUE Image: ", brisque_image)

@@ -2,14 +2,21 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import skimage.restoration
+import skimage.registration
+import skimage.transform
+from skimage.color import rgb2gray
 import torch
 from pystackreg import StackReg
 import piq
-from skimage.color import rgb2gray
+import SimpleITK as sitk
+import warnings
 
-SHARPNESS_METRIC = 'var_of_laplacian'  # Choose between 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'
+SHARPNESS_METRIC = 'var_of_laplacian'  # Select the primary sharpness metric between 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'
+sharpness_metrics = ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad']
+assert SHARPNESS_METRIC in sharpness_metrics, "Invalid sharpness metric. Supported values are 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'"
 
-note = ""  # Note to be displayed in the title of the image or printed in the report
+
+note = ""  # Initialize the note to be displayed in the title of the image or printed in the report
 
 
 def import_video(video_path):
@@ -61,8 +68,8 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True):
     :param metric: Sharpness metric to be used. Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
+    # TODO: Fix sharpness calculation for reference image
     global note
-
     if len(frames.shape) == 2:
         # If a single frame is given
         if frames.ndim == 3:
@@ -121,8 +128,6 @@ def select_frames(frames, sharpness, threshold=None, metric=SHARPNESS_METRIC):
     :return: Selected frames as np.ndarray.
     """
     global note
-    sharpness_metrics = ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad']
-
     # If no threshold is given, calculate it automatically
     if threshold is None:
         if metric == 'loc_var_of_gray':
@@ -167,9 +172,10 @@ def select_frames(frames, sharpness, threshold=None, metric=SHARPNESS_METRIC):
     return selected_frames
 
 
+# noinspection PyBroadException
 def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
     """
-    Displays a frame with a title overlay. Optionally saves the frame as a .png file.
+    Displays a frame with a title overlay.
     :param image: Input frame as np.ndarray.
     :param sharpness: Sharpness value to be printed in the title. If None, it will be calculated.
     :param frame_number: Frame index to be printed in the title.
@@ -199,9 +205,9 @@ def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
 
     # Overlay the title on top of the image
     if frame_number is None:
-        plt.text(width / 2, 10, f"{note if custom_note is None else custom_note}\nsharpness={sharpness:.2f}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note if custom_note is None else custom_note}sharpness={sharpness:.2f}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     else:
-        plt.text(width / 2, 10, f"{note if custom_note is None else custom_note}\nsharpness={sharpness:.2f}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
+        plt.text(width / 2, 10, f"{note if custom_note is None else custom_note}sharpness={sharpness:.2f}, i={frame_number}", color='white', fontsize=12, ha='center', va='top', backgroundcolor='black')
     # Hide axis
     plt.axis('off')
     plt.show()
@@ -239,23 +245,22 @@ def crop_to_intersection(frames):
 
 def register(selected_frames, sharpness, reference='best', crop=True):
     """
-    Registers the sharpest frames and returns a stack of registered and optionally cropped frames.
+    Registers the sharpest frames using the pyStackReg library and returns a stack of registered and optionally cropped frames.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to the previous frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
-    :param selected_frames: Selected sharp frames as np.ndarray.
+    :param selected_frames: Stack of frames to be registered as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param crop: Controls whether to crop the registered frames to their intersection.
-    :return: Registered frame stack as np.ndarray.
+    :return: Stack of registered frames as np.ndarray.
     """
     global note
     if selected_frames.ndim == 2:
         # If only one frame is given, return it
         note += "Only one frame given, nothing to register\n"
-        print("Only one frame given, nothing to register")
+        warnings.warn("Only a single frame was given to the registration function. No registration was performed and the frame was returned.")
         return selected_frames
     else:
         if reference == 'previous':
             # Register to previous frame in the stack
-            # Find the sharpest frames and add them to a list
             # Perform registration
             sr = StackReg(StackReg.RIGID_BODY)
             out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
@@ -274,7 +279,8 @@ def register(selected_frames, sharpness, reference='best', crop=True):
         else:
             raise ValueError("Invalid reference")
 
-        note += "Output image given by: "
+        # Update note
+        note += "Output image given by (pyStackReg): "
         if crop:
             # Crop images to their intersection
             out_rigid_stack = crop_to_intersection(out_rigid_stack)
@@ -283,10 +289,77 @@ def register(selected_frames, sharpness, reference='best', crop=True):
         return out_rigid_stack
 
 
+def register2(selected_frames, sharpness, reference='best', crop=True):
+    """
+    Registers the sharpest frames using the SimpleElastix library and returns a stack of registered and optionally cropped frames.
+    :param selected_frames: Stack of frames to be registered as np.ndarray.
+    :param sharpness: List of sharpness values for frames.
+    :param reference:
+    :param crop: Controls whether to crop the registered frames to their intersection.
+    :return: Stack of registered frames as np.ndarray.
+    """
+    # TODO: Poštelovat počet iterací pro zrychlení výpočtu. Možná vypnout pyramidu a použít ji jen jako druhý pokus po nesprávné registraci.
+    global note
+    if selected_frames.ndim == 2:
+        # If only one frame is given, return it
+        note += "Only one frame given, nothing to register\n"
+        warnings.warn("Only a single frame was given to the registration function. No registration was performed and the frame was returned.")
+        return selected_frames
+    else:
+        if reference == 'best':
+            # Register to the sharpest frame
+            best_frame_index = np.argmax(sharpness)  # Find the sharpest frame
+
+            # Move the sharpest frame to the first position in the stack
+            selected_frames = np.roll(selected_frames, -best_frame_index, axis=0)
+
+            reference_image = selected_frames[0]
+
+            # Initialize output stack with the reference image
+            out_rigid_stack = [reference_image]
+
+            # Convert reference image to SimpleITK format
+            reference_image = sitk.GetImageFromArray(reference_image.astype(np.float32))
+
+            # Set parameters for registration
+            param_map = sitk.GetDefaultParameterMap("rigid")
+            param_map["Metric"] = ["AdvancedMeanSquares"]
+            param_map["MaximumNumberOfIterations"] = ["100"]
+            sitk.PrintParameterMap(param_map)  # Uncomment to print the parameter map
+            i = 0
+            for moving_frame in selected_frames[1:]:
+                i += 1
+                print(i)
+                # Convert moving image to SimpleITK format
+                moving_image = sitk.GetImageFromArray(moving_frame.astype(np.float32))
+
+                # Perform registration using SimpleElastix
+                elastix_image_filter = sitk.ElastixImageFilter()
+                elastix_image_filter.SetFixedImage(reference_image)
+                elastix_image_filter.SetMovingImage(moving_image)
+                elastix_image_filter.SetParameterMap(param_map)
+                elastix_image_filter.LogToConsoleOff()
+                elastix_image_filter.Execute()
+
+                # Get the registered image and convert it back to NumPy format
+                registered_image = sitk.GetArrayFromImage(elastix_image_filter.GetResultImage())
+                out_rigid_stack.append(registered_image)
+
+            # Update note
+            note += "Output image given by (elastix): "
+            if crop:
+                # Crop images to their intersection
+                out_rigid_stack = crop_to_intersection(out_rigid_stack)
+                note += "cropped "
+
+            out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
+            return out_rigid_stack
+
+
 def cumulate(frames):
     """
     Averages a stack of frames to reduce noise.
-    :param frames: Input frame stack as np.ndarray.
+    :param frames: Input list of frames as np.ndarrays.
     :return: Averaged frame as np.ndarray.
     """
     global note
@@ -327,6 +400,7 @@ def assess_quality(image, path, generate_report=True):
     :return: BRISQUE index for the processed image and the reference image (if provided). SNR for the processed image and the reference image (if provided).
     """
     # TODO: Když je brisque_image větší než brisque_reference, znovu registrovat ale jako 'previous'
+    # TODO: Odpojit generování reportu od funkce
     global note
     reference = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 
