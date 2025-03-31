@@ -15,7 +15,6 @@ SHARPNESS_METRIC = 'var_of_laplacian'  # Select the primary sharpness metric bet
 sharpness_metrics = ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad']
 assert SHARPNESS_METRIC in sharpness_metrics, "Invalid sharpness metric. Supported values are 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'"
 
-
 note = ""  # Initialize a note to be displayed in the title of the image or printed in the report
 
 
@@ -68,7 +67,6 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True):
     :param metric: Sharpness metric to be used. Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
-    # TODO: Fix sharpness calculation for reference image
     global note
     if len(frames.shape) == 2:
         # If a single frame is given
@@ -183,7 +181,7 @@ def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
     global note
     # Convert RGB input image to grayscale
     if image.ndim == 3:
-        image = rgb2gray(image)
+        image = normalize(rgb2gray(image))
 
     height, width = image.shape
 
@@ -298,6 +296,7 @@ def register2(selected_frames, sharpness, reference='best', crop=True):
     :return: Stack of registered frames as np.ndarray.
     """
     # TODO: Poštelovat počet iterací pro zrychlení výpočtu. Možná vypnout pyramidu a použít ji jen jako druhý pokus po nesprávné registraci.
+    # TODO: Zjistit proč register2 nefunguje dobře pro "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114436\OS_20231017114436_X0.0N_Y2.0_Z0.0_AHMED_Madeleine_121.png"
     global note
     if selected_frames.ndim == 2:
         # If only one frame is given, return it
@@ -322,13 +321,14 @@ def register2(selected_frames, sharpness, reference='best', crop=True):
 
             # Set parameters for registration
             param_map = sitk.GetDefaultParameterMap("rigid")
-            param_map["Metric"] = ["AdvancedMeanSquares"]
+            param_map["NumberOfResolutions"] = ["1"]  # Turn off pyramidal registration
+            param_map["Metric"] = ["AdvancedNormalizedCorrelation"]
             param_map["MaximumNumberOfIterations"] = ["100"]
-            sitk.PrintParameterMap(param_map)  # Uncomment to print the parameter map
+            # sitk.PrintParameterMap(param_map)  # Uncomment to print the parameter map
             i = 0
             for moving_frame in selected_frames[1:]:
                 i += 1
-                print(i)
+                # print(i)
                 # Convert moving image to SimpleITK format
                 moving_image = sitk.GetImageFromArray(moving_frame.astype(np.float32))
 
@@ -390,33 +390,30 @@ def normalize(image):
     return cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
 
 
-def assess_quality(image, path, generate_report=True):
+def assess_quality(image_processed, path, generate_report=True):
     """
     Calculates the BRISQUE index for an image and optionally compares it to a reference image.
     :param generate_report: Parameter to control whether a report text file is generated.
-    :param image: Processed image as np.ndarray.
+    :param image_processed: Processed image as np.ndarray.
     :param path: Path to the reference image.
     :return: BRISQUE index for the processed image and the reference image (if provided). SNR for the processed image and the reference image (if provided).
     """
     # TODO: Když je brisque_image větší než brisque_reference, znovu registrovat ale jako 'previous'
-    # TODO: Odpojit generování reportu od funkce
     global note
     reference = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 
     # Convert to grayscale if necessary
-    if image.ndim == 3:
-        image = rgb2gray(image)
+    if image_processed.ndim == 3:
+        image_processed = rgb2gray(image_processed)
 
     # Ensure all pixel values are in 0-255 range
-    if np.min(image) < 0 or np.max(image) > 255:
-        image = normalize(image)
+    if np.min(image_processed) < 0 or np.max(image_processed) > 255:
+        image_processed = normalize(image_processed)
 
-    # Calculate SNR
-    snr_image = np.mean(image) / np.std(image)
     # Convert image to 4D tensor
-    image = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(image), 0), 0)
+    image_processed_tensor = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(image_processed), 0), 0)
     # Calculate BRISQUE index
-    brisque_image = piq.brisque(image, data_range=255).item()
+    brisque_image = piq.brisque(image_processed_tensor, data_range=255).item()
 
     if reference is not None:
         # Convert to grayscale if necessary
@@ -426,28 +423,29 @@ def assess_quality(image, path, generate_report=True):
         # Ensure all pixel values are in 0-255 range
         reference = normalize(reference)
 
-        # Calculate SNR
-        snr_reference = np.mean(reference) / np.std(reference)
         # Convert reference to 4D tensor
-        reference = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(reference), 0), 0)
+        reference_tensor = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(reference), 0), 0)
         # Calculate BRISQUE index
-        brisque_reference = piq.brisque(reference, data_range=255).item()
+        brisque_reference = piq.brisque(reference_tensor, data_range=255).item()
 
     else:
         # If no reference is provided, return None
-        snr_reference = None
         brisque_reference = None
 
     # Create a text file containing the quality values
     if generate_report:
         with open(path[:-4] + "_report.txt", "w") as f:
-            f.write(f"Processed file: \"{path[:-4] + '.mpg'}\" \n\n"
+            f.write(f"Processed file: \"{path[:-4] + '.mpg'}\"\n\n"
                     f"{note}\n"
                     f"=== Image statistics ===\n"
                     f"Processed image: \n"
+                    f"Sharpness = {calculate_sharpness(image_processed, blur=False):.2f}\n"
                     f"BRISQUE index = {brisque_image:.2f}\n"
                     f"\n")
-            f.write(f"No reference image provided\n" if reference is None else f"Reference image: \n"
+            f.write(f"No reference image provided\n" if reference is None else
+                    f"Reference image: \n"
+                    f"Sharpness = {calculate_sharpness(reference, blur=False):.2f}\n"
                     f"BRISQUE index = {brisque_reference:.2f}\n")
+
     note = ""  # Reset note
-    return [brisque_image, brisque_reference], [snr_image, snr_reference]
+    return [brisque_image, brisque_reference]

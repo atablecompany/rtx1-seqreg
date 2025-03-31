@@ -4,14 +4,17 @@ from cv2 import imread
 import matplotlib.pyplot as plt
 import fundus
 from fundus import SHARPNESS_METRIC
+import time
+
 # SHARPNESS_METRIC is set within fundus.py
 
 
 #%% Import video file
-video_path = "G:\PapyrusSorted\ABOU ZEIDAN_Rima_19860110_FEMALE\OD_20240408102742\OD_20240408102742_X2.0N_Y0.0_Z0.0_ABOU ZEIDAN_Rima_314.mpg"
+video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114436\OS_20231017114436_X0.0N_Y2.0_Z0.0_AHMED_Madeleine_121.mpg"
 
 reference_path = video_path.replace(".mpg", ".png")
 reference = rgb2gray(imread(reference_path))
+start_time = time.time()
 frames = fundus.import_video(video_path)
 print(frames.shape)
 
@@ -43,6 +46,8 @@ cum = fundus.cumulate(reg)
 fundus.show_frame(cum)
 fundus.show_frame(imread(reference_path), custom_note="Reference image\n")
 
-brisque_image, brisque_reference = fundus.assess_quality(cum, path=reference_path, generate_report=False)[0]
-print("BRISQUE Image: ", brisque_image)
-print("BRISQUE Reference: ", brisque_reference)
+brisque = fundus.assess_quality(cum, path=reference_path)
+elapsed_time = time.time() - start_time
+print("Processing took: {:.2f} seconds".format(elapsed_time))
+print("BRISQUE Image: ", brisque[0])
+print("BRISQUE Reference: ", brisque[1])
