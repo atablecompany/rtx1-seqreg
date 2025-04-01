@@ -10,7 +10,8 @@ import time
 
 
 #%% Import video file
-video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114436\OS_20231017114436_X0.0N_Y2.0_Z0.0_AHMED_Madeleine_121.mpg"
+# video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114436\OS_20231017114436_X0.0N_Y2.0_Z0.0_AHMED_Madeleine_121.mpg"  # S timto register2 nefunguje dobre
+video_path = "G:\PapyrusSorted\ABDEL_Eman_19860604_FEMALE\OD_20231108153957\OD_20231108153957_X0.0T_Y2.0_Z10.0_ABDEL_Eman_201.mpg"
 
 reference_path = video_path.replace(".mpg", ".png")
 reference = rgb2gray(imread(reference_path))
@@ -39,7 +40,7 @@ plt.grid(True)
 plt.show()
 
 #%% Perform registration and averaging
-reg = fundus.register2(selected_frames, sharpness, reference='best', crop=True)
+reg = fundus.register(selected_frames, sharpness, reference='previous', crop=True)
 cum = fundus.cumulate(reg)
 
 #%% Show result
