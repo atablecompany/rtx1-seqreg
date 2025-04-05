@@ -10,15 +10,17 @@ def process_video(video_path):
     Process a video file and save the processed image.
     :param video_path: Path to the video file to be processed
     """
+    frames = fundus.load_video(video_path)  # Load the video file as a numpy array
     reference_path = video_path.replace(".mpg", ".png")  # Path to the reference .png image
-    frames = fundus.import_video(video_path)  # Import the video file as a numpy array
+    fundus.load_reference_image(reference_path)  # Load the reference image
     sharpness = fundus.calculate_sharpness(frames)  # Calculate the sharpness of each frame
     selected_frames = fundus.select_frames(frames, sharpness)  # Select sharp frames
-    reg = fundus.register2(selected_frames, sharpness)  # Perform registration of sharp frames
+    reg = fundus.register2(selected_frames, sharpness, reference='previous')  # Perform registration of sharp frames
     cum = fundus.cumulate(reg)  # Cumulate the registered frames
     output_path = video_path.replace(".mpg", "_processed.png")  # Path to save the processed image
     fundus.save_frame(cum, output_path)  # Save the processed image
-    fundus.assess_quality(cum, reference_path)  # Generate quality assessment report
+    report_path = video_path.replace(".mpg", "_report.txt")  # Path to save the quality report
+    fundus.assess_quality(cum, report_path)  # Generate quality assessment report
 
 
 # Specify the directory containing video files
