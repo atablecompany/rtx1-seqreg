@@ -251,7 +251,6 @@ def crop_to_intersection(frames, update_note=True):
     :return: Cropped images as np.ndarray.
     """
     global note
-    local_note = ""  # Local note variable
 
     mask = np.ones_like(frames[0], dtype=bool)
 
@@ -265,28 +264,61 @@ def crop_to_intersection(frames, update_note=True):
 
     cropped_images = [frame[y_min:y_max + 1, x_min:x_max + 1] for frame in frames]
 
-    # Update local note
-    local_note += "cropped "
-
     # Update the global note if update_note is True
     if update_note:
-        note += local_note
+        note += "cropped "
 
     return cropped_images
 
 
-def register(selected_frames, sharpness, reference='best', crop=True, update_note=True):
+def extend_to_union(frames, update_note=True):
+    """
+    Expands all frames to cover the union of non-zero regions across the stack.
+    Replaces zero values in union areas with average non-zero values from other frames.
+    :param update_note: Controls whether to update the note variable. Mainly for debug use.
+    :param frames: Input stack of registered frames (np.ndarray)
+    :return: Expanded frame stack with consistent non-zero regions (np.ndarray)
+    """
+    global note
+
+    # Create union mask where any frame has non-zero values
+    union_mask = np.any(frames != 0, axis=0)
+
+    extended_frames = []
+    for i, frame in enumerate(frames):
+        # Create working copy and identify fill targets
+        modified_frame = frame.copy()
+        fill_mask = np.logical_and(union_mask, modified_frame == 0)
+
+        # Calculate average non-zero values from other frames
+        other_frames = np.delete(frames, i, axis=0)
+        non_zero_sum = np.sum(np.where(other_frames != 0, other_frames, 0), axis=0)
+        non_zero_count = np.maximum(np.sum(other_frames != 0, axis=0), 1)  # Prevent division by zero
+
+        # Apply averaged values to zero regions
+        modified_frame[fill_mask] = (non_zero_sum / non_zero_count)[fill_mask]
+        extended_frames.append(modified_frame)
+
+    # Update the global note if update_note is True
+    if update_note:
+        note += "extended to union "
+
+    return np.array(extended_frames)
+
+
+def register(selected_frames, sharpness, reference='best', pad='same', update_note=True):
     """
     Registers the sharpest frames using the pyStackReg library and returns a stack of registered and optionally cropped frames.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
     :param sharpness: List of sharpness values for frames.
-    :param crop: Controls whether to crop the registered frames to their intersection.
+    :param pad: Either 'same', 'intersection', or 'zeros'. If 'same', all frames are expanded to cover the union of non-zero regions across the stack. If 'intersection', all frames are cropped to their intersection. If 'zeros', all frames are padded with zeros.
     :return: Stack of registered frames as np.ndarray.
     """
+    assert pad in ['same', 'crop', 'zeros'], "Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'."
     global note
-    local_note = ""  # Local note variable
+    local_note = ""
 
     assert reference in ['best', 'previous'], "Invalid reference parameter. Supported values are 'best' and 'previous'."
     local_note += f"Registration method: pyStackReg\nReference: '{reference}'\n"
@@ -306,8 +338,6 @@ def register(selected_frames, sharpness, reference='best', crop=True, update_not
             out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
             out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
 
-            # Update local note
-            local_note += "Output image given by: "
         elif reference == 'best':
             # Register to the sharpest frame
             # Find the sharpest frame and move it to the first position in the stack
@@ -320,33 +350,40 @@ def register(selected_frames, sharpness, reference='best', crop=True, update_not
             out_rigid_stack = sr.register_transform_stack(selected_frames, reference='first')
             out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
 
-            # Update local note
-            local_note += "Output image given by: "
         else:
             raise ValueError("Invalid reference parameter. Supported values are 'best' and 'previous'.")
 
-        if crop:
-            # Crop images to their intersection
-            out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=update_note)
-
+        local_note += "Output image given by: "
         # Update the global note if update_note is True
         if update_note:
             note += local_note
 
+        if pad == 'crop':
+            # Crop images to their intersection
+            out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=update_note)
+        elif pad == 'same':
+            # Expand all frames to cover the union of non-zero regions across the stack
+            out_rigid_stack = extend_to_union(out_rigid_stack, update_note=update_note)
+        elif pad == 'zeros':
+            pass
+        else:
+            raise ValueError("Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'.")
+
         return out_rigid_stack
 
 
-def register2(selected_frames, sharpness, reference='best', crop=True):
+def register2(selected_frames, sharpness, reference='best', pad='same'):
     """
     Registers the sharpest frames using the SimpleElastix library and returns a stack of registered and optionally cropped frames.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
-    :param crop: Controls whether to crop the registered frames to their intersection.
+    :param pad: Either 'same', 'intersection', or 'zeros'. If 'same', all frames are expanded to cover the union of non-zero regions across the stack. If 'intersection', all frames are cropped to their intersection. If 'zeros', all frames are padded with zeros.
     :return: Stack of registered frames as np.ndarray.
     """
-    global note, reference_image
     assert reference in ['best', 'previous'], "Invalid reference parameter. Supported values are 'best' and 'previous'."
+    assert pad in ['same', 'crop', 'zeros'], "Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'."
+    global note, reference_image
     note_addition = f"Registration method: SimpleElastix\nReference: '{reference}'\n"
 
     if selected_frames.ndim == 2:
@@ -427,10 +464,18 @@ def register2(selected_frames, sharpness, reference='best', crop=True):
         else:
             raise ValueError("Invalid reference parameter. Supported values are 'best' and 'previous'.")
 
-        if crop:
+        if pad == 'crop':
             # Crop images to their intersection
             out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=False)
             note_addition += "cropped "
+        elif pad == 'same':
+            # Expand all frames to cover the union of non-zero regions across the stack
+            out_rigid_stack = extend_to_union(out_rigid_stack, update_note=False)
+            note_addition += "extended to union "
+        elif pad == 'zeros':
+            pass
+        else:
+            raise ValueError("Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'.")
 
         # This is the output of the registration
         out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
@@ -452,7 +497,7 @@ def register2(selected_frames, sharpness, reference='best', crop=True):
                 sharps = [sharpness_processed1]
 
                 # Register again, this time using pyStackReg
-                outs.append(register(selected_frames, sharpness, reference='previous', crop=crop, update_note=False))
+                outs.append(register(selected_frames, sharpness, reference='previous', pad=pad, update_note=False))
 
                 # Cumulate the registered frame
                 cum = cumulate(outs[-1], update_note=False)
@@ -485,7 +530,11 @@ def register2(selected_frames, sharpness, reference='best', crop=True):
                         registered_image = sitk.GetArrayFromImage(elastix_image_filter.GetResultImage())
                         out_rigid_stack3.append(registered_image)
 
-                    if crop:
+                        # TODO: Bug test new register2
+                    if pad == 'same':
+                        # Expand all frames to cover the union of non-zero regions across the stack
+                        out_rigid_stack3 = extend_to_union(out_rigid_stack3, update_note=False)
+                    elif pad == 'crop':
                         # Crop images to their intersection
                         out_rigid_stack3 = crop_to_intersection(out_rigid_stack3, update_note=False)
 
@@ -497,12 +546,15 @@ def register2(selected_frames, sharpness, reference='best', crop=True):
                 sharpest_index = np.argmax(sharps)
                 if sharpest_index == 1:
                     note_addition = f"Registration method: pyStackReg\nReference: 'previous'\n"
-                    if crop:
-                        note_addition += "Output image given by: cropped "
                 elif sharpest_index == 2:
                     note_addition = f"Registration method: SimpleElastix\nReference: 'previous'\n"
-                    if crop:
+
+                if sharpest_index != 0:
+                    if pad == 'crop':
                         note_addition += "Output image given by: cropped "
+                    elif pad == 'same':
+                        note_addition += "Output image given by: extended to union "
+
                 out_rigid_stack = outs[sharpest_index]
 
                 # print(sharpest_index)
@@ -524,17 +576,15 @@ def cumulate(frames, update_note=True):
     :return: Averaged frame as np.ndarray.
     """
     global note
-    local_note = ""  # Local note variable
 
     # If only one frame is given, return it
     if np.array(frames).ndim == 2:
         return frames
     cum = np.mean(frames, axis=0).astype(np.uint8)
-    local_note += f"mean of {len(frames)} frames\n"
 
     # Update the global note if update_note is True
     if update_note:
-        note += local_note
+        note += f"mean of {len(frames)} frames\n"
 
     return cum
 
@@ -625,6 +675,3 @@ def assess_quality(image_processed, report_path=None, generate_report=True):
 
     note = ""  # Reset note
     return [brisque_image, brisque_reference]
-
-
-# TODO: Implementovat rozsireni na sjednoceni

@@ -10,10 +10,11 @@ import time
 
 
 #%% Import video file
-video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114436\OS_20231017114436_X0.0N_Y2.0_Z0.0_AHMED_Madeleine_121.mpg"  # S timto register2 nefunguje dobre
-# video_path = "G:\PapyrusSorted\ABDEL_Eman_19860604_FEMALE\OD_20231108153957\OD_20231108153957_X0.0T_Y2.0_Z10.0_ABDEL_Eman_201.mpg"
+# video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114311\OS_20231017114311_X2.0N_Y0.0_Z0.0_AHMED_Madeleine_121.mpg"  # S timto register2 nefunguje dobre
+video_path = "G:\PapyrusSorted\ADAMS KIPPING_Elena_19920504_FEMALE\OD_20240418114137\OD_20240418114137_X11.3N_Y8.4_Z130.0_ADAMS KIPPING_Elena_473.mpg"
 
 reference_path = video_path.replace(".mpg", ".png")
+report_path = video_path.replace(".mpg", "_report.txt")
 reference = load_reference_image(reference_path)
 start_time = time.time()
 frames = fundus.load_video(video_path)
@@ -40,14 +41,14 @@ plt.grid(True)
 plt.show()
 
 #%% Perform registration and averaging
-reg = fundus.register2(selected_frames, sharpness, reference='previous', crop=True)
+reg = fundus.register2(selected_frames, sharpness, reference='previous', pad='same')
 cum = fundus.cumulate(reg)
 
 #%% Show result
 fundus.show_frame(cum)
 fundus.show_frame(reference, custom_note="Reference image\n")
 
-brisque = fundus.assess_quality(cum, video_path)
+brisque = fundus.assess_quality(cum, report_path)
 elapsed_time = time.time() - start_time
 print("Processing took: {:.2f} seconds".format(elapsed_time))
 print("BRISQUE Image: ", brisque[0])
