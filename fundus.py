@@ -7,13 +7,11 @@ import skimage.transform
 from skimage.color import rgb2gray
 import torch
 from pystackreg import StackReg
-import piq
+from piq import brisque
+from brisque import BRISQUE
+from pypiqe import piqe
 import SimpleITK as sitk
 import warnings
-
-SHARPNESS_METRIC = 'tenengrad'  # Select the primary sharpness metric between 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'
-sharpness_metrics = ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad']
-assert SHARPNESS_METRIC in sharpness_metrics, "Invalid sharpness metric. Supported values are 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'"
 
 note = ""  # Initialize a note to be displayed in the title of the image or printed in the report
 video_path = None
@@ -71,17 +69,21 @@ def load_reference_image(reference_path):
     global reference_image
     reference_image = cv2.imread(reference_path, cv2.IMREAD_GRAYSCALE)
     reference_image = match_dimensions(reference_image)  # Resize reference image to match the dimensions of the input frames
+    reference_image = normalize(reference_image)
     return reference_image
 
 
-def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True):
+def calculate_sharpness2(frames, metric='var_of_laplacian', blur=True, update_note=True):
     """
     Calculates the sharpness of a frame or frame stack using a specified metric.
+    Used by the calculate_sharpness function but can be also used independently to override the default combination of metrics.
+    :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param blur: If True, the input frames will be blurred using a Gaussian filter to reduce the noise level.
     :param frames: Input frame as np.ndarray.
-    :param metric: Sharpness metric to be used. Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'.
+    :param metric: Sharpness metric to be used. Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'. If no metric is selected, the default metric is 'var_of_laplacian'.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
+    assert metric in ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad'], "Invalid metric parameter. Supported values are 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'"
     global note
     if len(frames.shape) == 2:
         # If a single frame is given
@@ -127,65 +129,46 @@ def calculate_sharpness(frames, metric=SHARPNESS_METRIC, blur=True):
 
     elif len(frames.shape) == 3:
         # If a stack of frames is given
-        note += f"Sharpness metric: '{metric}'\n"
+        if update_note:
+            note += f"Sharpness metric: '{metric}'\n"
         # Calculate sharpness for each frame in the stack by calling the function recursively
-        sharpness = [calculate_sharpness(f, metric) for f in frames]
+        sharpness = [calculate_sharpness2(f, metric) for f in frames]
         return sharpness
 
     else:
         raise ValueError("Invalid input shape")
 
 
-def select_frames(frames, sharpness, threshold=None, metric=SHARPNESS_METRIC):
+def calculate_sharpness(frames):
+    """
+    Calculates the sharpness of a frame stack using multiple metrics and combines them into a single metric.
+    :param frames: Input frame stack as np.ndarray.
+    :return: List of estimated sharpness values.
+    """
+    # Get the sharpness values for each metric and normalize them to 0-1 range
+    gray = calculate_sharpness2(frames, metric='loc_var_of_gray', blur=True, update_note=False)
+    gray = gray / max(gray)
+    laplacian = calculate_sharpness2(frames, metric='var_of_laplacian', blur=True, update_note=False)
+    laplacian = laplacian / max(laplacian)
+    tenengrad = calculate_sharpness2(frames, metric='var_of_tenengrad', blur=True, update_note=False)
+    tenengrad = tenengrad / max(tenengrad)
+
+    # Combine the sharpness values into a single metric
+    avg = (gray + laplacian + tenengrad) / 3
+    return avg
+
+
+def select_frames(frames, sharpness, threshold=0.6):
     """
     Selects sharp frames based on a threshold.
     :param frames: Input frame stack as np.ndarray.
     :param sharpness: List of sharpness values for frames.
-    :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected). If not provided, the threshold is calculated automatically.
-    :param metric: Sharpness metric used by the calculate_sharpness function. Used for automatic threshold calculation.
-    :return: Selected frames as np.ndarray.
+    :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected).
+    Higher values mean that fewer frames will be selected for registration and averaging, resulting in a noisier but sharper image.
+    Lower values mean that more frames will be selected for registration and averaging, resulting in a smoother but less sharp image.
+    This parameter is used to control the trade-off between sharpness and smoothness.
+    :return: List of selected frames as np.ndarray.
     """
-    global note
-    # If no threshold is given, calculate it automatically
-    if threshold is None:
-        if metric == 'loc_var_of_gray':
-            threshold = min(sharpness) + 0.8 * (max(sharpness) - min(sharpness))
-        elif metric == 'var_of_laplacian':
-            threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
-        elif metric == 'tenengrad':
-            threshold = min(sharpness) + 0.65 * (max(sharpness) - min(sharpness))
-        elif metric == 'var_of_tenengrad':
-            threshold = min(sharpness) + 0.6 * (max(sharpness) - min(sharpness))
-    elif threshold < 0 or threshold > 1:
-        raise ValueError("Threshold must be between 0 and 1")
-    else:
-        threshold = min(sharpness) + threshold * (max(sharpness) - min(sharpness))
-
-    # Detect ineffective sharpness metric
-    # If only one frame is above the threshold, return the sharpest frame
-    if sum([1 for var in sharpness if var >= threshold]) <= 1 and threshold == 1:
-        note += "Only one frame above threshold found, no registration performed\n"
-        return frames[np.argmax(sharpness)]
-
-    # If few sharp frames are detected, switch to a different sharpness metric and try again
-    if sum([1 for var in sharpness if var >= threshold]) <= 2 and threshold != 1:
-        # Check if this iteration is the last available sharpness metric
-        if metric == sharpness_metrics[-1]:
-            # If the last sharpness metric is reached, return the sharpest frame
-            note += "Few sharp frames detected. May not register\n"
-            print("Few sharp frames detected. May not register")
-            return frames[np.where(sharpness >= threshold)]
-        else:
-            # If this iteration is not the last available sharpness metric, switch to the next one
-            note += "Few sharp frames detected, switching to another sharpness metric...\n"
-            print("Few sharp frames detected, switching to another sharpness metric")
-            new_metric = sharpness_metrics[(sharpness_metrics.index(metric) + 1) % len(sharpness_metrics)]
-            # Get a new list of sharpness values
-            new_sharpness = calculate_sharpness(frames, metric=new_metric)
-            # Recursively call the function with the new sharpness values
-            return select_frames(frames, new_sharpness, metric=new_metric)
-
-    # Make a list of frames above the threshold and return it
     selected_frames = frames[np.where(sharpness >= threshold)]
     return selected_frames
 
@@ -210,7 +193,7 @@ def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
 
     if sharpness is None:
         try:
-            sharpness = calculate_sharpness(image, blur=False)
+            sharpness = calculate_sharpness2(image, blur=False)
         except:
             sharpness = 0
 
@@ -306,9 +289,10 @@ def extend_to_union(frames, update_note=True):
     return np.array(extended_frames)
 
 
-def register(selected_frames, sharpness, reference='best', pad='same', update_note=True):
+def register2(selected_frames, sharpness, reference='best', pad='same', update_note=True):
     """
     Registers the sharpest frames using the pyStackReg library and returns a stack of registered and optionally cropped frames.
+    Used by the register function but can be also used independently to register using PyStackReg specifically.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
@@ -372,7 +356,7 @@ def register(selected_frames, sharpness, reference='best', pad='same', update_no
         return out_rigid_stack
 
 
-def register2(selected_frames, sharpness, reference='best', pad='same'):
+def register(selected_frames, sharpness, reference='best', pad='same'):
     """
     Registers the sharpest frames using the SimpleElastix library and returns a stack of registered and optionally cropped frames.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
@@ -393,8 +377,13 @@ def register2(selected_frames, sharpness, reference='best', pad='same'):
         return selected_frames
     else:
         # Set parameters for registration
+        # TODO: Rotace možná špatně propaguje pro reference='previous'?
         param_map = sitk.GetDefaultParameterMap("rigid")
-        param_map["NumberOfResolutions"] = ["1"]  # Turn off pyramidal registration
+        param_map["NumberOfResolutions"] = ["4"]  # Set number of resolutions for pyramidal registration
+        # Uncomment to turn off pyramidal registration
+        # param_map["NumberOfResolutions"] = ["1"]
+        # param_map["ShrinkFactorsPerLevel"] = ["1"]
+        # param_map["SmoothingSigmasPerLevel"] = ["0"]
         param_map["Metric"] = ["AdvancedNormalizedCorrelation"]
         param_map["MaximumNumberOfIterations"] = ["100"]
         # sitk.PrintParameterMap(param_map)  # Uncomment to print the parameter map
@@ -487,8 +476,8 @@ def register2(selected_frames, sharpness, reference='best', pad='same'):
             cum = cumulate(out_rigid_stack1, update_note=False)
             # Check if the processed image is sharper than reference
             # noinspection PyTypeChecker
-            sharpness_reference = calculate_sharpness(reference_image, blur=False)
-            sharpness_processed1 = calculate_sharpness(cum, blur=False)
+            sharpness_reference = calculate_sharpness2(reference_image, blur=False)
+            sharpness_processed1 = calculate_sharpness2(cum, blur=False)
 
             if sharpness_reference > sharpness_processed1:
                 # print("zkusme to znova")
@@ -497,17 +486,17 @@ def register2(selected_frames, sharpness, reference='best', pad='same'):
                 sharps = [sharpness_processed1]
 
                 # Register again, this time using pyStackReg
-                outs.append(register(selected_frames, sharpness, reference='previous', pad=pad, update_note=False))
+                outs.append(register2(selected_frames, sharpness, reference='previous', pad=pad, update_note=False))
 
                 # Cumulate the registered frame
                 cum = cumulate(outs[-1], update_note=False)
-                sharps.append(calculate_sharpness(cum, blur=False))
+                sharps.append(calculate_sharpness2(cum, blur=False))
 
                 if sharpness_reference > sharps[-1]:
-                    # If the processed image is still not sharper than the reference, register one last time using pyramidal registration
+                    # If the processed image is still not sharper than the reference, register one last time using overkill parameters
                     # print("zkusme to jeste jednou")
-                    param_map["NumberOfResolutions"] = ["4"]  # Use pyramidal registration
-                    param_map["MaximumNumberOfIterations"] = ["200"]
+                    param_map["NumberOfResolutions"] = ["6"]  # Use pyramidal registration
+                    param_map["MaximumNumberOfIterations"] = ["500"]
 
                     out_rigid_stack3 = [selected_frames[0]]
 
@@ -530,7 +519,6 @@ def register2(selected_frames, sharpness, reference='best', pad='same'):
                         registered_image = sitk.GetArrayFromImage(elastix_image_filter.GetResultImage())
                         out_rigid_stack3.append(registered_image)
 
-                        # TODO: Bug test new register2
                     if pad == 'same':
                         # Expand all frames to cover the union of non-zero regions across the stack
                         out_rigid_stack3 = extend_to_union(out_rigid_stack3, update_note=False)
@@ -540,7 +528,7 @@ def register2(selected_frames, sharpness, reference='best', pad='same'):
 
                     outs.append(np.clip(out_rigid_stack3, 0, 255).astype(np.uint8))  # Ensure pixel values are within [0, 255])
                     cum = cumulate(out_rigid_stack3, update_note=False)
-                    sharps.append(calculate_sharpness(cum, blur=False))
+                    sharps.append(calculate_sharpness2(cum, blur=False))
 
                 # Return the sharpest registration result
                 sharpest_index = np.argmax(sharps)
@@ -585,6 +573,9 @@ def cumulate(frames, update_note=True):
     # Update the global note if update_note is True
     if update_note:
         note += f"mean of {len(frames)} frames\n"
+
+    # Normalize the output image to the range [0, 255]
+    cum = normalize(cum)
 
     return cum
 
@@ -642,20 +633,36 @@ def assess_quality(image_processed, report_path=None, generate_report=True):
     if np.min(image_processed) < 0 or np.max(image_processed) > 255:
         image_processed = normalize(image_processed)
 
+    # piq brisque implementation
     # Convert image to 4D tensor
-    image_processed_tensor = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(image_processed), 0), 0)
+    # image_processed_tensor = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(image_processed), 0), 0)
     # Calculate BRISQUE index
-    brisque_image = piq.brisque(image_processed_tensor, data_range=255).item()
+    # brisque_image = brisque(image_processed_tensor, data_range=255).item()
+
+    # Calculate BRISQUE index
+    obj = BRISQUE(url=False)
+    brisque_image = obj.score(np.stack((image_processed,)*3, axis=-1))
+
+    # Calculate PIQE score
+    piqe_image, _, _, _ = piqe(image_processed)
 
     if reference is not None:
+        # piq brisque implementation
         # Convert reference to 4D tensor
-        reference_tensor = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(reference), 0), 0)
+        # reference_tensor = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(reference), 0), 0)
         # Calculate BRISQUE index
-        brisque_reference = piq.brisque(reference_tensor, data_range=255).item()
+        # brisque_reference = brisque(reference_tensor, data_range=255).item()
+
+        # Calculate BRISQUE index
+        brisque_reference = obj.score(np.stack((reference,)*3, axis=-1))
+
+        # Calculate PIQE score
+        piqe_reference, _, _, _ = piqe(reference)
 
     else:
         # If no reference is provided, return None
         brisque_reference = None
+        piqe_reference = None
 
     # Create a text file containing the quality values
     if generate_report is True and report_path is not None:
@@ -664,14 +671,16 @@ def assess_quality(image_processed, report_path=None, generate_report=True):
                     f"{note}\n"
                     f"=== Image statistics ===\n"
                     f"Processed image:\n"
-                    f"Sharpness = {calculate_sharpness(image_processed, blur=False):.2f}\n"
+                    f"Sharpness = {calculate_sharpness2(image_processed, blur=False):.2f}\n"
                     f"BRISQUE index = {brisque_image:.2f}\n"
+                    f"PIQE index = {piqe_image:.2f}\n"
                     f"\n")
             # noinspection PyTypeChecker
             f.write(f"No reference image provided\n" if reference is None else
                     f"Reference image:\n"
-                    f"Sharpness = {calculate_sharpness(reference, blur=False):.2f}\n"
-                    f"BRISQUE index = {brisque_reference:.2f}\n")
+                    f"Sharpness = {calculate_sharpness2(reference):.2f}\n"
+                    f"BRISQUE index = {brisque_reference:.2f}\n"
+                    f"PIQE index = {piqe_reference:.2f}\n")
 
     note = ""  # Reset note
-    return [brisque_image, brisque_reference]
+    return [brisque_image, brisque_reference], [piqe_image, piqe_reference]
