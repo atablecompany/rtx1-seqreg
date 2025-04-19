@@ -1,6 +1,6 @@
 # This script is used to test the fundus.py functions
-from skimage.color import rgb2gray
-from cv2 import imread
+import cv2
+import numpy as np
 import matplotlib.pyplot as plt
 import fundus
 from fundus import load_reference_image, select_frames
@@ -32,29 +32,55 @@ selected_frames = fundus.select_frames(frames, sharpness, threshold=sharpness_th
 #     fundus.show_frame(frames[i], sharpness=sharpness[i], custom_note=i)
 
 #%% Plot sharpness over frames
-plt.figure(figsize=(10, 6))
-plt.plot(sharpness, marker='o', linestyle='-', color='b')
-plt.axhline(y=sharpness_threshold, color='r', linestyle='--', label='Sharpness Threshold')
-plt.title(f'Sharpness over frames (avg)')
-# plt.title(f'Sharpness over frames ({metric})')
-plt.xlabel('Frame index')
-plt.ylabel('Sharpness')
-plt.grid(True)
-# plt.savefig('sharpness_plot.svg', format='svg')
-plt.show()
+# plt.figure(figsize=(10, 6))
+# plt.plot(sharpness, marker='o', linestyle='-', color='b')
+# plt.axhline(y=sharpness_threshold, color='r', linestyle='--', label='Sharpness Threshold')
+# plt.title(f'Sharpness over frames (avg)')
+# # plt.title(f'Sharpness over frames ({metric})')
+# plt.xlabel('Frame index')
+# plt.ylabel('Sharpness')
+# plt.grid(True)
+# # plt.savefig('sharpness_plot.svg', format='svg')
+# plt.show()
 
 #%% Perform registration and averaging
-reg = fundus.register(selected_frames, sharpness, reference='best', pad='same')
-cum = fundus.cumulate(reg)
+# selected_frames = fundus.upsample(selected_frames, 2)
 
+reg = fundus.register2(selected_frames, sharpness, reference='best', pad='same')
+# TODO: Register pomoci elastixu v podstate vubec nefunguje
+# for i in range(len(reg)):
+#     fundus.save_frame(reg[i], f"C:/Users/tengl/PycharmProjects/dp/reg/frame_{i}.png")
+
+#%% Export registered frames as lossless avi
+output_path = "C:/Users/tengl/PycharmProjects/dp/selected_frames.avi"
+height, width = frames[0].shape[:2]
+fourcc = cv2.VideoWriter_fourcc(*'MJPG')  # Lossless codec
+out = cv2.VideoWriter(output_path, fourcc, 30, (width, height), False)
+
+for frame in reg:
+    # Ensure frame is in the correct format (uint8)
+    if frame.dtype != np.uint8:
+        frame = frame.astype(np.uint8)
+    out.write(frame)
+
+out.release()
+print(f"Video saved to {output_path}")
+
+#%%
+cum = fundus.cumulate(reg, method='median')
+fundus.save_frame(cum, "C:/Users/tengl/PycharmProjects/dp/pokus/cum_wt3.png")
+fundus.assess_quality(cum, "C:/Users/tengl/PycharmProjects/dp/pokus/cum_wt3.txt")
 #%% Show result
-fundus.show_frame(cum)
-fundus.show_frame(reference, custom_note="Reference image\n")
+# fundus.show_frame(cum)
+# fundus.show_frame(reference, custom_note="Reference image\n")
+#
+# filt = fundus.denoise(cum, sigma=5)
+# fundus.show_frame(filt)
 
 elapsed_time = time.time() - start_time
-brisque, piqe = fundus.assess_quality(cum, report_path)
-print("Processing took: {:.2f} seconds".format(elapsed_time))
-print("BRISQUE Image: ", brisque[0])
-print("BRISQUE Reference: ", brisque[1])
-print("PIQE Image: ", piqe[0])
-print("PIQE Reference: ", piqe[1])
+# brisque, piqe = fundus.assess_quality(cum, report_path)
+# print("Processing took: {:.2f} seconds".format(elapsed_time))
+# print("BRISQUE Image: ", brisque[0])
+# print("BRISQUE Reference: ", brisque[1])
+# print("PIQE Image: ", piqe[0])
+# print("PIQE Reference: ", piqe[1])

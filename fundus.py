@@ -1,17 +1,13 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import skimage.restoration
-import skimage.registration
-import skimage.transform
 from skimage.color import rgb2gray
-import torch
 from pystackreg import StackReg
-from piq import brisque
 from brisque import BRISQUE
 from pypiqe import piqe
 import SimpleITK as sitk
 import warnings
+import bm3d
 
 note = ""  # Initialize a note to be displayed in the title of the image or printed in the report
 video_path = None
@@ -289,6 +285,21 @@ def extend_to_union(frames, update_note=True):
     return np.array(extended_frames)
 
 
+# def upsample(frames, scale=2):
+#     """
+#     Upsamples a frame stack by a specified scale factor using nearest neighbor interpolation.
+#     :param frames: Input image stack as np.ndarray.
+#     :param scale: Upsampling scale factor.
+#     :return: Upsampled frame stack as np.ndarray.
+#     """
+#     frames_upsampled = []
+#     for frame in frames:
+#         height, width = frame.shape
+#         frames_upsampled.append(cv2.resize(frame, (width * scale, height * scale), interpolation=cv2.INTER_CUBIC))
+#
+#     return np.array(frames_upsampled)
+
+
 def register2(selected_frames, sharpness, reference='best', pad='same', update_note=True):
     """
     Registers the sharpest frames using the pyStackReg library and returns a stack of registered and optionally cropped frames.
@@ -379,14 +390,14 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
         # Set parameters for registration
         # TODO: Rotace možná špatně propaguje pro reference='previous'?
         param_map = sitk.GetDefaultParameterMap("rigid")
-        param_map["NumberOfResolutions"] = ["4"]  # Set number of resolutions for pyramidal registration
+        param_map["NumberOfResolutions"] = ["6"]  # Set number of resolutions for pyramidal registration
         # Uncomment to turn off pyramidal registration
         # param_map["NumberOfResolutions"] = ["1"]
-        # param_map["ShrinkFactorsPerLevel"] = ["1"]
-        # param_map["SmoothingSigmasPerLevel"] = ["0"]
+        param_map["ShrinkFactorsPerLevel"] = ["2"]
+        param_map["SmoothingSigmasPerLevel"] = ["5"]
         param_map["Metric"] = ["AdvancedNormalizedCorrelation"]
-        param_map["MaximumNumberOfIterations"] = ["100"]
-        # sitk.PrintParameterMap(param_map)  # Uncomment to print the parameter map
+        param_map["MaximumNumberOfIterations"] = ["200"]
+        sitk.PrintParameterMap(param_map)  # Uncomment to print the parameter map
 
         if reference == 'previous':
             out_rigid_stack = [selected_frames[0]]
@@ -556,23 +567,62 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
         return out_rigid_stack
 
 
-def cumulate(frames, update_note=True):
+def cumulate(frames, method='median', update_note=True, bandwidth=6):
     """
-    Averages a stack of frames to reduce noise.
+    Fuses a stack of frames to reduce noise.
+    :param bandwidth: Bandwidth for kernel regression. Higher values result in smoother images.
+    :param method: Method for fusing frames. Can be either 'mean', 'median', or 'kernel'.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param frames: Input list of frames as np.ndarrays.
     :return: Averaged frame as np.ndarray.
     """
     global note
+    assert method in ['mean', 'median', 'kernel'], "Invalid method parameter. Supported values are 'mean', 'median', or 'kernel'."
 
     # If only one frame is given, return it
     if np.array(frames).ndim == 2:
         return frames
-    cum = np.mean(frames, axis=0).astype(np.uint8)
+
+    if method == 'mean':
+        cum = np.mean(frames, axis=0).astype(np.uint8)
+        local_note = f"mean of {len(frames)} frames\n"
+
+    elif method == 'median':
+        cum = np.median(frames, axis=0).astype(np.uint8)
+        local_note = f"median of {len(frames)} frames\n"
+
+    elif method == 'kernel':
+        h, w = frames[0].shape
+        grid_x, grid_y = np.meshgrid(np.arange(w), np.arange(h))
+
+        # Initialize result
+        result = np.zeros((h, w), dtype=float)
+        weights_sum = np.zeros((h, w), dtype=float)
+
+        # For each frame, apply kernel weights
+        for frame in frames:
+            # Calculate structure tensor for adaptive kernels
+            gx = cv2.Sobel(frame, cv2.CV_64F, 1, 0, ksize=3)
+            gy = cv2.Sobel(frame, cv2.CV_64F, 0, 1, ksize=3)
+
+            # Simple structure-adaptive weight (can be more sophisticated)
+            edge_strength = np.sqrt(gx ** 2 + gy ** 2)
+            weight = np.exp(-edge_strength / (2 * bandwidth ** 2))
+
+            # Accumulate weighted values
+            result += frame * weight
+            weights_sum += weight
+
+        # Normalize by weights
+        cum = np.divide(result, weights_sum, where=weights_sum > 0)
+        local_note = f"kernel regression of {len(frames)} frames\n"
+
+    else:
+        raise ValueError("Invalid method parameter.")
 
     # Update the global note if update_note is True
     if update_note:
-        note += f"mean of {len(frames)} frames\n"
+        note += local_note
 
     # Normalize the output image to the range [0, 255]
     cum = normalize(cum)
@@ -580,16 +630,20 @@ def cumulate(frames, update_note=True):
     return cum
 
 
-def denoise(image, sigma=0.7):
+def denoise(image, sigma=5):
     """
-    Denoises an image using bilateral filtering.
-    :param sigma: Standard deviation for range distance. A larger value results in averaging of pixels with larger spatial differences.
+    Denoises an image using BM3D algorithm.
+    :param sigma: Estimated noise standard deviation.
     :param image: Input image as np.ndarray.
     :return: Denoised image as np.ndarray.
     """
     global note
-    note += f"Denoised with sigma={sigma}\n"
-    return skimage.restoration.denoise_bilateral(image, sigma_spatial=sigma)
+    note += f"Denoised with BM3D (sigma={sigma})\n"
+
+    # Ensure float32 input in [0,1] range
+    image_norm = image.astype(np.float32) / 255
+    denoised = bm3d.bm3d(image_norm, sigma_psd=sigma / 255)
+    return (denoised * 255).astype(np.uint8)
 
 
 def normalize(image):
@@ -622,6 +676,7 @@ def assess_quality(image_processed, report_path=None, generate_report=True):
     :param report_path: Path to save the report text file.
     :return: BRISQUE index for the processed image and the reference image (if provided).
     """
+    # TODO: Zrusit generate_report parametr, staci report_path
     global note, reference_image, video_path
     reference = reference_image
 
