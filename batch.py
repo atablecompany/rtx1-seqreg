@@ -15,8 +15,10 @@ def process_video(video_path):
     fundus.load_reference_image(reference_path)  # Load the reference image
     sharpness = fundus.calculate_sharpness(frames)  # Calculate the sharpness of each frame
     selected_frames = fundus.select_frames(frames, sharpness, threshold=0.6)  # Select sharp frames
-    reg = fundus.register(selected_frames, sharpness, reference='best')  # Perform registration of sharp frames
+    reg = fundus.register2(selected_frames, sharpness, reference='best')  # Perform registration of sharp frames
     cum = fundus.cumulate(reg)  # Cumulate the registered frames
+    # if len(selected_frames) < 5:
+    #     cum = fundus.denoise(cum, sigma=8)  # Apply additional denoising if few sharp frames are found
     output_path = video_path.replace(".mpg", "_processed_new.png")  # Path to save the processed image
     fundus.save_frame(cum, output_path)  # Save the processed image
     report_path = video_path.replace(".mpg", "_report_new.txt")  # Path to save the quality report

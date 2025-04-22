@@ -21,6 +21,7 @@ def load_video(video_file_path):
     :return: Reduced frame stack as np.ndarray.
     """
     global note, video_path
+
     video_path = video_file_path
     note = ""  # Reset the note for each video
 
@@ -63,9 +64,11 @@ def load_reference_image(reference_path):
     :return: Reference image as np.ndarray.
     """
     global reference_image
+
     reference_image = cv2.imread(reference_path, cv2.IMREAD_GRAYSCALE)
     reference_image = match_dimensions(reference_image)  # Resize reference image to match the dimensions of the input frames
     reference_image = normalize(reference_image)
+
     return reference_image
 
 
@@ -81,6 +84,7 @@ def calculate_sharpness2(frames, metric='var_of_laplacian', blur=True, update_no
     """
     assert metric in ['var_of_laplacian', 'loc_var_of_gray', 'tenengrad', 'var_of_tenengrad'], "Invalid metric parameter. Supported values are 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'"
     global note
+
     if len(frames.shape) == 2:
         # If a single frame is given
         if frames.ndim == 3:
@@ -151,6 +155,7 @@ def calculate_sharpness(frames):
 
     # Combine the sharpness values into a single metric
     avg = (gray + laplacian + tenengrad) / 3
+
     return avg
 
 
@@ -166,6 +171,7 @@ def select_frames(frames, sharpness, threshold=0.6):
     :return: List of selected frames as np.ndarray.
     """
     selected_frames = frames[np.where(sharpness >= threshold)]
+
     return selected_frames
 
 
@@ -178,6 +184,7 @@ def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
     :param custom_note: Custom note to be displayed in the title instead of the default note.
     """
     global note
+
     # Convert RGB input image to grayscale
     if image.ndim == 3:
         image = rgb2gray(image)
@@ -256,7 +263,7 @@ def extend_to_union(frames, update_note=True):
     Replaces zero values in union areas with average non-zero values from other frames.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param frames: Input stack of registered frames (np.ndarray)
-    :return: Expanded frame stack with consistent non-zero regions (np.ndarray)
+    :return: Frame stack with consistent non-zero regions (np.ndarray)
     """
     global note
 
@@ -308,15 +315,16 @@ def register2(selected_frames, sharpness, reference='best', pad='same', update_n
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
     :param sharpness: List of sharpness values for frames.
-    :param pad: Either 'same', 'intersection', or 'zeros'. If 'same', all frames are expanded to cover the union of non-zero regions across the stack. If 'intersection', all frames are cropped to their intersection. If 'zeros', all frames are padded with zeros.
+    :param pad: Either 'same', 'intersection', or 'zeros'.
+        If 'same', all frames are expanded to cover the union of non-zero regions across the stack and the output shape is the same as that of the input. Regions near the borders may be of lower quality as a result.
+        If 'intersection', all frames are cropped to their intersection, which results in an output with a smaller shape.
+        If 'zeros', all frames are padded with zeros.
     :return: Stack of registered frames as np.ndarray.
     """
     assert pad in ['same', 'crop', 'zeros'], "Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'."
-    global note
-    local_note = ""
-
     assert reference in ['best', 'previous'], "Invalid reference parameter. Supported values are 'best' and 'previous'."
-    local_note += f"Registration method: pyStackReg\nReference: '{reference}'\n"
+    global note
+    local_note = f"Registration method: pyStackReg\nReference: '{reference}'\n"
 
     if selected_frames.ndim == 2:
         # If only one frame is given, return it
@@ -365,6 +373,7 @@ def register2(selected_frames, sharpness, reference='best', pad='same', update_n
             raise ValueError("Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'.")
 
         return out_rigid_stack
+        # TODO: Checknout jestli je vysledek lepsi nez reference i u register2
 
 
 def register(selected_frames, sharpness, reference='best', pad='same'):
@@ -373,7 +382,10 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
     :param selected_frames: Stack of frames to be registered as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
-    :param pad: Either 'same', 'intersection', or 'zeros'. If 'same', all frames are expanded to cover the union of non-zero regions across the stack. If 'intersection', all frames are cropped to their intersection. If 'zeros', all frames are padded with zeros.
+    :param pad: Either 'same', 'intersection', or 'zeros'.
+        If 'same', all frames are expanded to cover the union of non-zero regions across the stack and the output shape is the same as that of the input. Regions near the borders may be of lower quality as a result.
+        If 'intersection', all frames are cropped to their intersection, which results in an output with a smaller shape.
+        If 'zeros', all frames are padded with zeros.
     :return: Stack of registered frames as np.ndarray.
     """
     assert reference in ['best', 'previous'], "Invalid reference parameter. Supported values are 'best' and 'previous'."
@@ -388,7 +400,6 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
         return selected_frames
     else:
         # Set parameters for registration
-        # TODO: Rotace možná špatně propaguje pro reference='previous'?
         param_map = sitk.GetDefaultParameterMap("rigid")
         param_map["NumberOfResolutions"] = ["6"]  # Set number of resolutions for pyramidal registration
         # Uncomment to turn off pyramidal registration
@@ -574,7 +585,7 @@ def cumulate(frames, method='median', update_note=True, bandwidth=6):
     :param method: Method for fusing frames. Can be either 'mean', 'median', or 'kernel'.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param frames: Input list of frames as np.ndarrays.
-    :return: Averaged frame as np.ndarray.
+    :return: Resulting image as np.ndarray.
     """
     global note
     assert method in ['mean', 'median', 'kernel'], "Invalid method parameter. Supported values are 'mean', 'median', or 'kernel'."
@@ -633,7 +644,7 @@ def cumulate(frames, method='median', update_note=True, bandwidth=6):
 def denoise(image, sigma=5):
     """
     Denoises an image using BM3D algorithm.
-    :param sigma: Estimated noise standard deviation.
+    :param sigma: Estimated noise standard deviation. Higher values result in more aggressive denoising.
     :param image: Input image as np.ndarray.
     :return: Denoised image as np.ndarray.
     """
@@ -642,8 +653,13 @@ def denoise(image, sigma=5):
 
     # Ensure float32 input in [0,1] range
     image_norm = image.astype(np.float32) / 255
-    denoised = bm3d.bm3d(image_norm, sigma_psd=sigma / 255)
+    denoised = bm3d.bm3d(image_norm, sigma_psd=sigma / 255, stage_arg=bm3d.BM3DStages.ALL_STAGES)
+
+    # Clamp values to [0,1] range before conversion
+    denoised = np.clip(denoised, 0, 1)
+
     return (denoised * 255).astype(np.uint8)
+    # TODO: Zkusit implementovat multi NLM denoising https://docs.opencv.org/3.4/d5/d69/tutorial_py_non_local_means.html
 
 
 def normalize(image):
@@ -668,15 +684,13 @@ def match_dimensions(image1, image2=None):
     return cv2.resize(image1, (image2.shape[1], image2.shape[0]), interpolation=cv2.INTER_CUBIC)
 
 
-def assess_quality(image_processed, report_path=None, generate_report=True):
+def assess_quality(image_processed, report_path=None):
     """
-    Calculates the BRISQUE index for an image and optionally compares it to a reference image.
-    :param generate_report: Parameter to control whether a report text file is generated.
+    Calculates BRISQUE index, PIQE score and sharpness (according to variance of Laplacian) for an image and compares it with a reference image if it was loaded previously using load_reference_image().
     :param image_processed: Processed image as np.ndarray.
-    :param report_path: Path to save the report text file.
-    :return: BRISQUE index for the processed image and the reference image (if provided).
+    :param report_path: Path to save the report text file. If no path is provided, no report will be generated.
+    :return: Sharpness, BRISQUE index and PIQE score for the processed image. If a reference image was provided, it will return both sets of scores as tuples (processed_image, reference_image).
     """
-    # TODO: Zrusit generate_report parametr, staci report_path
     global note, reference_image, video_path
     reference = reference_image
 
@@ -688,54 +702,53 @@ def assess_quality(image_processed, report_path=None, generate_report=True):
     if np.min(image_processed) < 0 or np.max(image_processed) > 255:
         image_processed = normalize(image_processed)
 
-    # piq brisque implementation
-    # Convert image to 4D tensor
-    # image_processed_tensor = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(image_processed), 0), 0)
-    # Calculate BRISQUE index
-    # brisque_image = brisque(image_processed_tensor, data_range=255).item()
+    # Calculate sharpness for processed image
+    sharpness_image = calculate_sharpness2(image_processed, blur=False)
 
-    # Calculate BRISQUE index
+    # Calculate BRISQUE index for processed image
     obj = BRISQUE(url=False)
     brisque_image = obj.score(np.stack((image_processed,)*3, axis=-1))
 
-    # Calculate PIQE score
+    # Calculate PIQE score for processed image
     piqe_image, _, _, _ = piqe(image_processed)
 
     if reference is not None:
-        # piq brisque implementation
-        # Convert reference to 4D tensor
-        # reference_tensor = torch.unsqueeze(torch.unsqueeze(torch.from_numpy(reference), 0), 0)
-        # Calculate BRISQUE index
-        # brisque_reference = brisque(reference_tensor, data_range=255).item()
+        # Calculate sharpness of the reference image
+        sharpness_reference = calculate_sharpness2(reference, blur=False)
 
-        # Calculate BRISQUE index
+        # Calculate BRISQUE index of the reference image
         brisque_reference = obj.score(np.stack((reference,)*3, axis=-1))
 
-        # Calculate PIQE score
+        # Calculate PIQE score of the reference image
         piqe_reference, _, _, _ = piqe(reference)
 
     else:
         # If no reference is provided, return None
         brisque_reference = None
         piqe_reference = None
+        sharpness_reference = None
 
     # Create a text file containing the quality values
-    if generate_report is True and report_path is not None:
+    if report_path is not None:
         with open(report_path, "w") as f:
             f.write(f"Processed file: \"{video_path}\"\n\n"
                     f"{note}\n"
                     f"=== Image statistics ===\n"
                     f"Processed image:\n"
-                    f"Sharpness = {calculate_sharpness2(image_processed, blur=False):.2f}\n"
+                    f"Sharpness = {sharpness_image:.2f}\n"
                     f"BRISQUE index = {brisque_image:.2f}\n"
                     f"PIQE index = {piqe_image:.2f}\n"
                     f"\n")
-            # noinspection PyTypeChecker
             f.write(f"No reference image provided\n" if reference is None else
                     f"Reference image:\n"
-                    f"Sharpness = {calculate_sharpness2(reference):.2f}\n"
+                    f"Sharpness = {sharpness_reference:.2f}\n"
                     f"BRISQUE index = {brisque_reference:.2f}\n"
                     f"PIQE index = {piqe_reference:.2f}\n")
 
     note = ""  # Reset note
-    return [brisque_image, brisque_reference], [piqe_image, piqe_reference]
+
+    if reference is not None:
+        return (sharpness_image, sharpness_reference), (brisque_image, brisque_reference), (piqe_image, piqe_reference)
+    else:
+        return sharpness_image, brisque_image, piqe_image
+
