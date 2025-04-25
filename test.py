@@ -9,7 +9,7 @@ import skimage
 
 #%% Import video file
 # video_path = "G:\PapyrusSorted\AHMED_Madeleine_19790728_FEMALE\OS_20231017114409\OS_20231017114409_X0.0N_Y-2.0_Z0.0_AHMED_Madeleine_121.mpg"  # S timto register2 nefunguje dobre
-video_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506115102\OD_20240506115102_X12.2N_Y5.6_Z150.0_ABADZHIEVA_Polina_496.mpg"
+video_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506114845\OD_20240506114845_X2.0N_Y0.0_Z0.0_ABADZHIEVA_Polina_496.mpg"
 
 reference_path = video_path.replace(".mpg", ".png")
 report_path = video_path.replace(".mpg", "_report.txt")
@@ -80,10 +80,12 @@ fundus.show_frame(cum, custom_note=f"Denoised\n")
 
 #%% Assess quality
 elapsed_time = time.time() - start_time
-sharpness, brisque, piqe = fundus.assess_quality(cum, report_path)
+sharpness, sharpness_log, brisque, piqe = fundus.assess_quality(cum, report_path)
 print("Processing took: {:.2f} seconds".format(elapsed_time))
 print("Sharpness Image: ", sharpness[0])
 print("Sharpness Reference: ", sharpness[1])
+print("Sharpness LoG Image: ", sharpness_log[0])
+print("Sharpness LoG Reference: ", sharpness_log[1])
 print("BRISQUE Image: ", brisque[0])
 print("BRISQUE Reference: ", brisque[1])
 print("PIQE Image: ", piqe[0])

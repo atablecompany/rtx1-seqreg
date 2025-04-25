@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import skimage
 from skimage.color import rgb2gray
 from pystackreg import StackReg
 from brisque import BRISQUE
@@ -77,7 +78,7 @@ def calculate_sharpness2(frames, metric='var_of_laplacian', blur=True, update_no
     Calculates the sharpness of a frame or frame stack using a specified metric.
     Used by the calculate_sharpness function but can be also used independently to override the default combination of metrics.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
-    :param blur: If True, the input frames will be blurred using a Gaussian filter to reduce the noise level.
+    :param blur: If True, the input frames will first be blurred using a Gaussian filter to reduce the noise level.
     :param frames: Input frame as np.ndarray.
     :param metric: Sharpness metric to be used. Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'. If no metric is selected, the default metric is 'var_of_laplacian'.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
@@ -165,9 +166,8 @@ def select_frames(frames, sharpness, threshold=0.6):
     :param frames: Input frame stack as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected).
-    Higher values mean that fewer frames will be selected for registration and averaging, resulting in a noisier but sharper image.
-    Lower values mean that more frames will be selected for registration and averaging, resulting in a smoother but less sharp image.
-    This parameter is used to control the trade-off between sharpness and smoothness.
+        Higher values indicate that fewer frames will be selected for registration and averaging, resulting in a noisier but sharper image.
+        Lower values indicate that more frames will be selected for registration and averaging, resulting in a smoother but less sharp image.
     :return: List of selected frames as np.ndarray.
     """
     selected_frames = frames[np.where(sharpness >= threshold)]
@@ -323,7 +323,7 @@ def register2(selected_frames, sharpness, reference='best', pad='same', update_n
     """
     assert pad in ['same', 'crop', 'zeros'], "Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'."
     assert reference in ['best', 'previous'], "Invalid reference parameter. Supported values are 'best' and 'previous'."
-    global note
+    global note, reference_image
     local_note = f"Registration method: pyStackReg\nReference: '{reference}'\n"
 
     if selected_frames.ndim == 2:
@@ -357,23 +357,55 @@ def register2(selected_frames, sharpness, reference='best', pad='same', update_n
             raise ValueError("Invalid reference parameter. Supported values are 'best' and 'previous'.")
 
         local_note += "Output image given by: "
-        # Update the global note if update_note is True
-        if update_note:
-            note += local_note
 
         if pad == 'crop':
             # Crop images to their intersection
-            out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=update_note)
+            out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=False)
+            local_note += "cropped "
         elif pad == 'same':
             # Expand all frames to cover the union of non-zero regions across the stack
-            out_rigid_stack = extend_to_union(out_rigid_stack, update_note=update_note)
+            out_rigid_stack = extend_to_union(out_rigid_stack, update_note=False)
+            local_note += "extended to union "
         elif pad == 'zeros':
             pass
         else:
             raise ValueError("Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'.")
 
+        # This section is used to check if the processed image is sharper than the reference image and to re-register if necessary
+        if reference_image is not None:
+            # Cumulate the registered frames
+            cum = cumulate(out_rigid_stack, update_note=False)
+            # Check if the processed image is sharper than reference
+            # noinspection PyTypeChecker
+            sharpness_reference = calculate_sharpness2(reference_image, blur=False)
+            sharpness_processed1 = calculate_sharpness2(cum, blur=False)  # No blur because there is now presumably little noise
+            if sharpness_reference > sharpness_processed1:
+                # print("zkusme to znova")
+                # Register again, this time with previous frame as reference
+                sr = StackReg(StackReg.RIGID_BODY)
+                out_rigid_stack2 = sr.register_transform_stack(selected_frames, reference='previous')
+                out_rigid_stack2 = np.clip(out_rigid_stack2, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
+                # Cumulate the registered frames
+                cum2 = cumulate(out_rigid_stack2, update_note=False)
+                # Check if the processed image is sharper than reference
+                # noinspection PyTypeChecker
+                sharpness_processed2 = calculate_sharpness2(cum2, blur=False)
+                if sharpness_processed2 > sharpness_processed1:
+                    # If this registration is better than the previous one, use it
+                    out_rigid_stack = out_rigid_stack2
+                    if pad == 'crop':
+                        # Crop images to their intersection
+                        out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=False)
+                        # Note was already updated above
+                    elif pad == 'same':
+                        # Expand all frames to cover the union of non-zero regions across the stack
+                        out_rigid_stack = extend_to_union(out_rigid_stack, update_note=False)
+
+        # Update the global note if update_note is True
+        if update_note:
+            note += local_note
+
         return out_rigid_stack
-        # TODO: Checknout jestli je vysledek lepsi nez reference i u register2
 
 
 def register(selected_frames, sharpness, reference='best', pad='same'):
@@ -391,7 +423,7 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
     assert reference in ['best', 'previous'], "Invalid reference parameter. Supported values are 'best' and 'previous'."
     assert pad in ['same', 'crop', 'zeros'], "Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'."
     global note, reference_image
-    note_addition = f"Registration method: SimpleElastix\nReference: '{reference}'\n"
+    local_note = f"Registration method: SimpleElastix\nReference: '{reference}'\n"
 
     if selected_frames.ndim == 2:
         # If only one frame is given, return it
@@ -433,7 +465,7 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
                 out_rigid_stack.append(registered_image)
 
             # Update note
-            note_addition += "Output image given by: "
+            local_note += "Output image given by: "
 
         elif reference == 'best':
             # Register to the sharpest frame
@@ -470,7 +502,7 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
                 out_rigid_stack.append(registered_image)
 
             # Update note
-            note_addition += "Output image given by: "
+            local_note += "Output image given by: "
 
         else:
             raise ValueError("Invalid reference parameter. Supported values are 'best' and 'previous'.")
@@ -478,11 +510,11 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
         if pad == 'crop':
             # Crop images to their intersection
             out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=False)
-            note_addition += "cropped "
+            local_note += "cropped "
         elif pad == 'same':
             # Expand all frames to cover the union of non-zero regions across the stack
             out_rigid_stack = extend_to_union(out_rigid_stack, update_note=False)
-            note_addition += "extended to union "
+            local_note += "extended to union "
         elif pad == 'zeros':
             pass
         else:
@@ -499,7 +531,7 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
             # Check if the processed image is sharper than reference
             # noinspection PyTypeChecker
             sharpness_reference = calculate_sharpness2(reference_image, blur=False)
-            sharpness_processed1 = calculate_sharpness2(cum, blur=False)
+            sharpness_processed1 = calculate_sharpness2(cum, blur=False)  # No blur because there is now presumably little noise
 
             if sharpness_reference > sharpness_processed1:
                 # print("zkusme to znova")
@@ -555,15 +587,15 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
                 # Return the sharpest registration result
                 sharpest_index = np.argmax(sharps)
                 if sharpest_index == 1:
-                    note_addition = f"Registration method: pyStackReg\nReference: 'previous'\n"
+                    local_note = f"Registration method: pyStackReg\nReference: 'previous'\n"
                 elif sharpest_index == 2:
-                    note_addition = f"Registration method: SimpleElastix\nReference: 'previous'\n"
+                    local_note = f"Registration method: SimpleElastix\nReference: 'previous'\n"
 
                 if sharpest_index != 0:
                     if pad == 'crop':
-                        note_addition += "Output image given by: cropped "
+                        local_note += "Output image given by: cropped "
                     elif pad == 'same':
-                        note_addition += "Output image given by: extended to union "
+                        local_note += "Output image given by: extended to union "
 
                 out_rigid_stack = outs[sharpest_index]
 
@@ -573,7 +605,7 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
                 # show_frame(cumulate(outs[2], update_note=False), custom_note="2")
 
         # Update note
-        note += note_addition
+        note += local_note
 
         return out_rigid_stack
 
@@ -641,19 +673,35 @@ def cumulate(frames, method='median', update_note=True, bandwidth=6):
     return cum
 
 
-def denoise(image, sigma=5):
+def denoise(image, method='bm3d', weight=8):
     """
     Denoises an image using BM3D algorithm.
-    :param sigma: Estimated noise standard deviation. Higher values result in more aggressive denoising.
+    :param method: Method for denoising. Can be either 'bm3d' or 'tv'.
+        For images with lots of small details (like cells), 'bm3d' is recommended.
+        For images with large smooth areas (like blood vessels), 'tv' is recommended.
+    :param weight: Weight affecting the amount of denoising done. Higher values result in more aggressive denoising.
+        Suggested values are 8 for BM3D and 0.05 for TV.
     :param image: Input image as np.ndarray.
     :return: Denoised image as np.ndarray.
     """
+    assert method in ['bm3d', 'tv'], "Invalid method parameter. Supported values are 'bm3d' and 'tv'."
     global note
-    note += f"Denoised with BM3D (sigma={sigma})\n"
 
-    # Ensure float32 input in [0,1] range
-    image_norm = image.astype(np.float32) / 255
-    denoised = bm3d.bm3d(image_norm, sigma_psd=sigma / 255, stage_arg=bm3d.BM3DStages.ALL_STAGES)
+    if method == 'bm3d':
+        note += f"Denoised with BM3D (sigma={weight})\n"
+        # Ensure float32 input in [0,1] range
+        image_norm = image.astype(np.float32) / 255
+        denoised = bm3d.bm3d(image_norm, sigma_psd=weight / 255, stage_arg=bm3d.BM3DStages.ALL_STAGES)
+
+    elif method == 'tv':
+        if weight == 8:
+            # Override default weight for TV denoising
+            weight = 0.05
+        note += f"Denoised with TV (weight={weight})\n"
+        denoised = skimage.restoration.denoise_tv_chambolle(image, weight=weight)
+
+    else:
+        raise ValueError("Invalid method parameter. Supported values are 'bm3d' and 'tv'.")
 
     # Clamp values to [0,1] range before conversion
     denoised = np.clip(denoised, 0, 1)
@@ -704,10 +752,11 @@ def assess_quality(image_processed, report_path=None):
 
     # Calculate sharpness for processed image
     sharpness_image = calculate_sharpness2(image_processed, blur=False)
+    sharpness_log_image = calculate_sharpness2(image_processed, blur=True)
 
     # Calculate BRISQUE index for processed image
     obj = BRISQUE(url=False)
-    brisque_image = obj.score(np.stack((image_processed,)*3, axis=-1))
+    brisque_image = obj.score(np.stack((image_processed,)*3, axis=-1))  # Convert image to RGB first
 
     # Calculate PIQE score for processed image
     piqe_image, _, _, _ = piqe(image_processed)
@@ -715,6 +764,7 @@ def assess_quality(image_processed, report_path=None):
     if reference is not None:
         # Calculate sharpness of the reference image
         sharpness_reference = calculate_sharpness2(reference, blur=False)
+        sharpness_log_reference = calculate_sharpness2(reference, blur=True)
 
         # Calculate BRISQUE index of the reference image
         brisque_reference = obj.score(np.stack((reference,)*3, axis=-1))
@@ -727,6 +777,7 @@ def assess_quality(image_processed, report_path=None):
         brisque_reference = None
         piqe_reference = None
         sharpness_reference = None
+        sharpness_log_reference = None
 
     # Create a text file containing the quality values
     if report_path is not None:
@@ -735,20 +786,22 @@ def assess_quality(image_processed, report_path=None):
                     f"{note}\n"
                     f"=== Image statistics ===\n"
                     f"Processed image:\n"
-                    f"Sharpness = {sharpness_image:.2f}\n"
+                    f"Sharpness (var_of_laplacian) = {sharpness_image:.2f}\n"
+                    f"Sharpness (var_of_LoG) = {sharpness_log_image:.2f}\n"
                     f"BRISQUE index = {brisque_image:.2f}\n"
                     f"PIQE index = {piqe_image:.2f}\n"
                     f"\n")
             f.write(f"No reference image provided\n" if reference is None else
                     f"Reference image:\n"
-                    f"Sharpness = {sharpness_reference:.2f}\n"
+                    f"Sharpness (var_of_laplacian) = {sharpness_reference:.2f}\n"
+                    f"Sharpness (var_of_LoG = {sharpness_log_reference:.2f}\n"
                     f"BRISQUE index = {brisque_reference:.2f}\n"
                     f"PIQE index = {piqe_reference:.2f}\n")
 
     note = ""  # Reset note
 
     if reference is not None:
-        return (sharpness_image, sharpness_reference), (brisque_image, brisque_reference), (piqe_image, piqe_reference)
+        return (sharpness_image, sharpness_reference), (sharpness_log_image, sharpness_log_reference), (brisque_image, brisque_reference), (piqe_image, piqe_reference)
     else:
-        return sharpness_image, brisque_image, piqe_image
+        return sharpness_image, sharpness_log_image, brisque_image, piqe_image
 
