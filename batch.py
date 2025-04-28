@@ -28,7 +28,7 @@ def process_video(video_path):
 
 
 if __name__ == "__main__":
-    video_directory = "G:\PapyrusSorted\AWADALLAH_Sara_19980829_FEMALE"
+    video_directory = "G:\PapyrusSorted"
     video_files = glob.glob(os.path.join(video_directory, "**", "*.mpg"), recursive=True)
 
     with ProcessPoolExecutor(max_workers=8) as executor:
