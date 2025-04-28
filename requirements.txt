@@ -34,3 +34,6 @@ cycler~=0.12.1
 kiwisolver~=1.4.8
 pystackreg~=0.2.8
 pypiqe~=1.2
+bm4d~=4.2.5
+PyWavelets~=1.8.0
+bm3d~=4.0.3

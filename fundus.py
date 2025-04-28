@@ -160,17 +160,61 @@ def calculate_sharpness(frames):
     return avg
 
 
-def select_frames(frames, sharpness, threshold=0.6):
+def select_frames(frames, sharpness, threshold=0.7):
     """
-    Selects sharp frames based on a threshold.
+    Selects sharp frames based on a hard threshold.
     :param frames: Input frame stack as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param threshold: Threshold between 0 and 1 for selecting the sharpest frames (0: all frames are selected, 1: only the sharpest frame is selected).
         Higher values indicate that fewer frames will be selected for registration and averaging, resulting in a noisier but sharper image.
         Lower values indicate that more frames will be selected for registration and averaging, resulting in a smoother but less sharp image.
+        Threshold value also affects the speed of the registration process.
     :return: List of selected frames as np.ndarray.
     """
+    global note
     selected_frames = frames[np.where(sharpness >= threshold)]
+    note += "Sharpness threshold: " + str(threshold) + "\n"
+
+    return
+
+
+def select_frames2(frames, sharpness):
+    """
+    Selects sharp frames adaptively based on sharpness distribution.
+    :param frames: Input frame stack as np.ndarray.
+    :param sharpness: List or np.ndarray of sharpness values for frames.
+    :return: List of selected frames as np.ndarray.
+    """
+    import numpy as np
+    global note
+
+    sharpness = np.array(sharpness)
+    num_frames = len(sharpness)
+    min_select = max(1, int(num_frames * 0.05))  # At least 5% of frames
+    max_select = max(1, int(num_frames * 0.8))   # Up to 80% of frames
+
+    # Measure sharpness variability
+    std_sharp = np.std(sharpness)
+    mean_sharp = np.mean(sharpness)
+    cv = std_sharp / (mean_sharp + 1e-8)  # Coefficient of variation
+
+    # Stricter mapping: Use a lower cv_max, so high std means fewer frames
+    cv_max = 0.3  # Lower than 0.5, so stricter
+    cv = min(cv, cv_max)
+    frac = 1 - (cv / cv_max)  # 1 when cv=0, 0 when cv=cv_max
+
+    # Optionally, make the drop-off sharper by squaring frac
+    frac = frac ** 2  # Makes the function stricter
+
+    n_select = int(min_select + frac * (max_select - min_select))
+    n_select = max(min_select, min(n_select, max_select))
+
+    # Select the n_select sharpest frames
+    sorted_indices = np.argsort(sharpness)[::-1]
+    selected_indices = sorted_indices[:n_select]
+    selected_frames = frames[selected_indices]
+
+    note += f"Selected {n_select} sharpest frames adaptively\n"
 
     return selected_frames
 
@@ -310,7 +354,7 @@ def extend_to_union(frames, update_note=True):
 def register2(selected_frames, sharpness, reference='best', pad='same', update_note=True):
     """
     Registers the sharpest frames using the pyStackReg library and returns a stack of registered and optionally cropped frames.
-    Used by the register function but can be also used independently to register using PyStackReg specifically.
+    Used by the register function but can be also used independently to register using pyStackReg specifically.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
@@ -326,7 +370,7 @@ def register2(selected_frames, sharpness, reference='best', pad='same', update_n
     global note, reference_image
     local_note = f"Registration method: pyStackReg\nReference: '{reference}'\n"
 
-    if selected_frames.ndim == 2:
+    if selected_frames.ndim == 2 or selected_frames.shape[0] == 1:
         # If only one frame is given, return it
         local_note += "Only one frame given, nothing to register\n"
         warnings.warn("Only a single frame was given to the registration function. No registration was performed and the frame was returned.")
@@ -356,16 +400,12 @@ def register2(selected_frames, sharpness, reference='best', pad='same', update_n
         else:
             raise ValueError("Invalid reference parameter. Supported values are 'best' and 'previous'.")
 
-        local_note += "Output image given by: "
-
         if pad == 'crop':
             # Crop images to their intersection
             out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=False)
-            local_note += "cropped "
         elif pad == 'same':
             # Expand all frames to cover the union of non-zero regions across the stack
             out_rigid_stack = extend_to_union(out_rigid_stack, update_note=False)
-            local_note += "extended to union "
         elif pad == 'zeros':
             pass
         else:
@@ -377,29 +417,39 @@ def register2(selected_frames, sharpness, reference='best', pad='same', update_n
             cum = cumulate(out_rigid_stack, update_note=False)
             # Check if the processed image is sharper than reference
             # noinspection PyTypeChecker
-            sharpness_reference = calculate_sharpness2(reference_image, blur=False)
-            sharpness_processed1 = calculate_sharpness2(cum, blur=False)  # No blur because there is now presumably little noise
+            sharpness_reference = calculate_sharpness2(reference_image, blur=True)
+            sharpness_processed1 = calculate_sharpness2(cum, blur=True)
             if sharpness_reference > sharpness_processed1:
                 # print("zkusme to znova")
-                # Register again, this time with previous frame as reference
+                # Register again but switch reference
+                reference_new = 'previous' if reference == 'best' else 'best'
                 sr = StackReg(StackReg.RIGID_BODY)
-                out_rigid_stack2 = sr.register_transform_stack(selected_frames, reference='previous')
+                out_rigid_stack2 = sr.register_transform_stack(selected_frames, reference=reference_new)
                 out_rigid_stack2 = np.clip(out_rigid_stack2, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
                 # Cumulate the registered frames
                 cum2 = cumulate(out_rigid_stack2, update_note=False)
                 # Check if the processed image is sharper than reference
                 # noinspection PyTypeChecker
-                sharpness_processed2 = calculate_sharpness2(cum2, blur=False)
+                sharpness_processed2 = calculate_sharpness2(cum2, blur=True)
+
                 if sharpness_processed2 > sharpness_processed1:
                     # If this registration is better than the previous one, use it
                     out_rigid_stack = out_rigid_stack2
                     if pad == 'crop':
                         # Crop images to their intersection
                         out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=False)
-                        # Note was already updated above
                     elif pad == 'same':
                         # Expand all frames to cover the union of non-zero regions across the stack
                         out_rigid_stack = extend_to_union(out_rigid_stack, update_note=False)
+                    # Update note
+                    local_note += f"Switched reference to '{reference_new}'\n"
+
+        # Update note
+        local_note += "Output image given by: "
+        if pad == 'crop':
+            local_note += "cropped "
+        if pad == 'same':
+            local_note += "extended to union "
 
         # Update the global note if update_note is True
         if update_note:
@@ -530,8 +580,8 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
             cum = cumulate(out_rigid_stack1, update_note=False)
             # Check if the processed image is sharper than reference
             # noinspection PyTypeChecker
-            sharpness_reference = calculate_sharpness2(reference_image, blur=False)
-            sharpness_processed1 = calculate_sharpness2(cum, blur=False)  # No blur because there is now presumably little noise
+            sharpness_reference = calculate_sharpness2(reference_image, blur=True)
+            sharpness_processed1 = calculate_sharpness2(cum, blur=True)  # No blur because there is now presumably little noise
 
             if sharpness_reference > sharpness_processed1:
                 # print("zkusme to znova")
@@ -544,7 +594,7 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
 
                 # Cumulate the registered frame
                 cum = cumulate(outs[-1], update_note=False)
-                sharps.append(calculate_sharpness2(cum, blur=False))
+                sharps.append(calculate_sharpness2(cum, blur=True))
 
                 if sharpness_reference > sharps[-1]:
                     # If the processed image is still not sharper than the reference, register one last time using overkill parameters
@@ -582,7 +632,7 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
 
                     outs.append(np.clip(out_rigid_stack3, 0, 255).astype(np.uint8))  # Ensure pixel values are within [0, 255])
                     cum = cumulate(out_rigid_stack3, update_note=False)
-                    sharps.append(calculate_sharpness2(cum, blur=False))
+                    sharps.append(calculate_sharpness2(cum, blur=True))
 
                 # Return the sharpest registration result
                 sharpest_index = np.argmax(sharps)

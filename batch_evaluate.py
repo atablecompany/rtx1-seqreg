@@ -90,7 +90,7 @@ def create_standard_boxplots(image_data, reference_data, metrics):
         ax.set_title(metric, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
 
-    plt.suptitle('Image Quality Metrics Comparison: Processed vs Reference. Sharpness threshold=0.6',
+    plt.suptitle('Image Quality Metrics Comparison: Processed vs Reference. Sharpness threshold=0.8',
                  y=0.98,  # Position slightly below top
                  fontsize=14,
                  fontweight='bold')

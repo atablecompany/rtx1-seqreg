@@ -11,12 +11,14 @@ def process_video(video_path):
     reference_path = video_path.replace(".mpg", ".png")
     fundus.load_reference_image(reference_path)
     sharpness = fundus.calculate_sharpness(frames)
-    selected_frames = fundus.select_frames(frames, sharpness, threshold=0.6)
+    # selected_frames = fundus.select_frames(frames, sharpness, threshold=0.8)
+    selected_frames = fundus.select_frames2(frames, sharpness)
     reg = fundus.register2(selected_frames, sharpness, reference='best')
     cum = fundus.cumulate(reg)
-    if len(selected_frames) < 3:
+    # TODO: Mozna denoising udelat na zaklade hodnoty BRISQUE a PIQE namisto poctu framu
+    if len(selected_frames) < 4:
         cum = fundus.denoise(cum, method='tv')
-    elif len(selected_frames) < 5:
+    elif len(selected_frames) < 9:
         cum = fundus.denoise(cum, method='bm3d')
     output_path = video_path.replace(".mpg", "_processed_new.png")
     fundus.save_frame(cum, output_path)
@@ -26,10 +28,10 @@ def process_video(video_path):
 
 
 if __name__ == "__main__":
-    video_directory = "G:\PapyrusSorted"
+    video_directory = "G:\PapyrusSorted\AWADALLAH_Sara_19980829_FEMALE"
     video_files = glob.glob(os.path.join(video_directory, "**", "*.mpg"), recursive=True)
 
-    with ProcessPoolExecutor() as executor:
+    with ProcessPoolExecutor(max_workers=8) as executor:
         # Submit all video processing tasks
         futures = [executor.submit(process_video, file) for file in video_files]
 
