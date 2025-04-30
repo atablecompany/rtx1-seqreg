@@ -6,14 +6,13 @@ from tqdm import tqdm
 
 
 def process_video(video_path):
-    # Existing processing logic remains unchanged
     frames = fundus.load_video(video_path)
     reference_path = video_path.replace(".mpg", ".png")
     fundus.load_reference_image(reference_path)
     sharpness = fundus.calculate_sharpness(frames)
     # selected_frames = fundus.select_frames(frames, sharpness, threshold=0.8)
     selected_frames = fundus.select_frames2(frames, sharpness)
-    reg = fundus.register2(selected_frames, sharpness, reference='best')
+    reg = fundus.register(selected_frames, sharpness, reference='best')
     cum = fundus.cumulate(reg)
     # TODO: Mozna denoising udelat na zaklade hodnoty BRISQUE a PIQE namisto poctu framu
     if len(selected_frames) < 4:

@@ -48,7 +48,7 @@ plt.grid(True)
 plt.show()
 
 #%% Perform registration
-reg = fundus.register2(selected_frames, sharpness, reference='best', pad='same')
+reg = fundus.register(selected_frames, sharpness, reference='best', pad='same')
 # TODO: Register pomoci elastixu v podstate vubec nefunguje
 # for i in range(len(reg)):
 #     fundus.save_frame(reg[i], f"C:/Users/tengl/PycharmProjects/dp/reg/frame_{i}.png")
@@ -69,7 +69,7 @@ out.release()
 print(f"Video saved to {output_path}")
 
 #%% Cumulate registered frames
-cum = fundus.cumulate(reg, method='median')
+cum = fundus.cumulate(reg, method='mean')
 
 # fundus.save_frame(cum, "C:/Users/tengl/PycharmProjects/dp/pokus/cum_wt3.png")
 # fundus.assess_quality(cum, "C:/Users/tengl/PycharmProjects/dp/pokus/cum_wt3.txt")

@@ -9,22 +9,42 @@ from pypiqe import piqe
 import SimpleITK as sitk
 import warnings
 import bm3d
+import re
+import os
+from typing import Literal
 
 note = ""  # Initialize a note to be displayed in the title of the image or printed in the report
 video_path = None
 reference_image = None
+is_central_region = True  # Flag to indicate if the video is of the central region (macula)
 
 
-def load_video(video_file_path):
+def load_video(video_file_path: str) -> np.ndarray:
     """
     Opens a video file and returns a np.ndarray of non-repeated frames. Only every third frame of the video file is saved.
-    :param video_file_path: Video file path.
+    Checks if the video is of the central region (macula) by looking for the _X<number><letter>_Y<number>_Z<number> pattern in the filename.
+    :param video_file_path: Full video filepath.
     :return: Reduced frame stack as np.ndarray.
     """
-    global note, video_path
-
+    global note, video_path, is_central_region
     video_path = video_file_path
     note = ""  # Reset the note for each video
+
+    # Check if the video is of the central region
+    filename = os.path.basename(video_file_path)
+    # Regex to match _X<number><letter>_Y<number>_Z
+    match = re.search(r'_X([-\d.]+)\D_Y([-\d.]+)_Z', filename)
+    if match:
+        x = float(match.group(1))
+        y = float(match.group(2))
+    else:
+        raise warnings.warn("Filename does not match expected format. Unable to determine the region. Assuming video is of the central region.")
+
+    if x > 4 or y > 4:
+        is_central_region = False
+        note += "Video is not of the central region\n"
+    else:
+        note += "Video is of the central region\n"
 
     # Open the video file
     video = cv2.VideoCapture(video_file_path)
@@ -58,7 +78,7 @@ def load_video(video_file_path):
     return np.array(frames_reduced).astype("uint8")  # Output array of frames
 
 
-def load_reference_image(reference_path):
+def load_reference_image(reference_path: str) -> np.ndarray:
     """
     Loads a reference image.
     :param reference_path: Path to the reference image.
@@ -73,13 +93,18 @@ def load_reference_image(reference_path):
     return reference_image
 
 
-def calculate_sharpness2(frames, metric='var_of_laplacian', blur=True, update_note=True):
+def calculate_sharpness2(
+        frames: np.ndarray,
+        metric: Literal['loc_var_of_gray', 'var_of_laplacian', 'tenengrad', 'var_of_tenengrad'] = 'var_of_laplacian',
+        blur=True,
+        update_note=True
+) -> float | list[float]:
     """
     Calculates the sharpness of a frame or frame stack using a specified metric.
-    Used by the calculate_sharpness function but can be also used independently to override the default combination of metrics.
+    Helper function used by the calculate_sharpness function but can be also used independently to override the default combination of metrics.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param blur: If True, the input frames will first be blurred using a Gaussian filter to reduce the noise level.
-    :param frames: Input frame as np.ndarray.
+    :param frames: Input frame or frame stack as np.ndarray.
     :param metric: Sharpness metric to be used. Can be either 'loc_var_of_gray', 'var_of_laplacian', 'tenengrad', or 'var_of_tenengrad'. If no metric is selected, the default metric is 'var_of_laplacian'.
     :return: Estimated sharpness value if input is a single frame or list of estimated sharpness values if input is a frame stack.
     """
@@ -95,7 +120,7 @@ def calculate_sharpness2(frames, metric='var_of_laplacian', blur=True, update_no
 
         if metric == 'loc_var_of_gray':
             # Determine the local gray level variance in a window https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=903548
-            window_size = 36
+            window_size = 36  # Balance between speed and accuracy
             height, width = frames.shape
             local_variances = []
             for y in range(0, height, window_size):
@@ -140,7 +165,7 @@ def calculate_sharpness2(frames, metric='var_of_laplacian', blur=True, update_no
         raise ValueError("Invalid input shape")
 
 
-def calculate_sharpness(frames):
+def calculate_sharpness(frames: np.ndarray) -> list[float]:
     """
     Calculates the sharpness of a frame stack using multiple metrics and combines them into a single metric.
     :param frames: Input frame stack as np.ndarray.
@@ -160,7 +185,7 @@ def calculate_sharpness(frames):
     return avg
 
 
-def select_frames(frames, sharpness, threshold=0.7):
+def select_frames(frames: np.ndarray, sharpness: list, threshold=0.7) -> np.ndarray:
     """
     Selects sharp frames based on a hard threshold.
     :param frames: Input frame stack as np.ndarray.
@@ -175,10 +200,10 @@ def select_frames(frames, sharpness, threshold=0.7):
     selected_frames = frames[np.where(sharpness >= threshold)]
     note += "Sharpness threshold: " + str(threshold) + "\n"
 
-    return
+    return selected_frames
 
 
-def select_frames2(frames, sharpness):
+def select_frames2(frames: np.ndarray, sharpness: list) -> np.ndarray:
     """
     Selects sharp frames adaptively based on sharpness distribution.
     :param frames: Input frame stack as np.ndarray.
@@ -219,7 +244,7 @@ def select_frames2(frames, sharpness):
     return selected_frames
 
 
-def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
+def show_frame(image: np.ndarray, sharpness=None, frame_number=None, custom_note=None):
     """
     Displays a frame with a title overlay.
     :param image: Input frame as np.ndarray.
@@ -263,7 +288,7 @@ def show_frame(image, sharpness=None, frame_number=None, custom_note=None):
     plt.show()
 
 
-def save_frame(image, path):
+def save_frame(image: np.ndarray, path: str):
     """
     Saves a frame as a .png file.
     :param image: Input frame as np.ndarray.
@@ -273,7 +298,7 @@ def save_frame(image, path):
     print(f"Saved image as {path}")
 
 
-def crop_to_intersection(frames, update_note=True):
+def crop_to_intersection(frames: np.ndarray, update_note=True) -> np.ndarray:
     """
     Crops a stack of frames to their intersection.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
@@ -298,10 +323,10 @@ def crop_to_intersection(frames, update_note=True):
     if update_note:
         note += "cropped "
 
-    return cropped_images
+    return np.array(cropped_images)
 
 
-def extend_to_union(frames, update_note=True):
+def extend_to_union(frames: np.ndarray, update_note=True) -> np.ndarray:
     """
     Expands all frames to cover the union of non-zero regions across the stack.
     Replaces zero values in union areas with average non-zero values from other frames.
@@ -351,10 +376,15 @@ def extend_to_union(frames, update_note=True):
 #     return np.array(frames_upsampled)
 
 
-def register2(selected_frames, sharpness, reference='best', pad='same', update_note=True):
+def register(
+        selected_frames: np.ndarray,
+        sharpness: list,
+        reference: Literal['best', 'previous'] = 'best',
+        pad: Literal['same', 'crop', 'zeros'] = 'same',
+        update_note=True
+) -> np.ndarray:
     """
-    Registers the sharpest frames using the pyStackReg library and returns a stack of registered and optionally cropped frames.
-    Used by the register function but can be also used independently to register using pyStackReg specifically.
+    Registers the sharpest frames using the pyStackReg library and returns a stack of registered frames.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
@@ -458,9 +488,14 @@ def register2(selected_frames, sharpness, reference='best', pad='same', update_n
         return out_rigid_stack
 
 
-def register(selected_frames, sharpness, reference='best', pad='same'):
+def register2(
+        selected_frames: np.ndarray,
+        sharpness: list,
+        reference: Literal['best', 'previous'] = 'best',
+        pad: Literal['same', 'crop', 'zeros'] = 'same'
+) -> np.ndarray:
     """
-    Registers the sharpest frames using the SimpleElastix library and returns a stack of registered and optionally cropped frames.
+    Registers the sharpest frames using the SimpleElastix library and returns a stack of registered frames.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
@@ -590,7 +625,7 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
                 sharps = [sharpness_processed1]
 
                 # Register again, this time using pyStackReg
-                outs.append(register2(selected_frames, sharpness, reference='previous', pad=pad, update_note=False))
+                outs.append(register(selected_frames, sharpness, reference='previous', pad=pad, update_note=False))
 
                 # Cumulate the registered frame
                 cum = cumulate(outs[-1], update_note=False)
@@ -660,17 +695,16 @@ def register(selected_frames, sharpness, reference='best', pad='same'):
         return out_rigid_stack
 
 
-def cumulate(frames, method='median', update_note=True, bandwidth=6):
+def cumulate(frames: np.ndarray, method: Literal['mean', 'median'] = 'mean', update_note=True) -> np.ndarray:
     """
     Fuses a stack of frames to reduce noise.
-    :param bandwidth: Bandwidth for kernel regression. Higher values result in smoother images.
-    :param method: Method for fusing frames. Can be either 'mean', 'median', or 'kernel'.
+    :param method: Method for fusing frames. Can be either 'mean' or 'median'.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
     :param frames: Input list of frames as np.ndarrays.
     :return: Resulting image as np.ndarray.
     """
     global note
-    assert method in ['mean', 'median', 'kernel'], "Invalid method parameter. Supported values are 'mean', 'median', or 'kernel'."
+    assert method in ['mean', 'median'], "Invalid method parameter. Supported values are 'mean' or 'median'."
 
     # If only one frame is given, return it
     if np.array(frames).ndim == 2:
@@ -681,34 +715,9 @@ def cumulate(frames, method='median', update_note=True, bandwidth=6):
         local_note = f"mean of {len(frames)} frames\n"
 
     elif method == 'median':
+        # Takes the median value of each pixel across all frames
         cum = np.median(frames, axis=0).astype(np.uint8)
         local_note = f"median of {len(frames)} frames\n"
-
-    elif method == 'kernel':
-        h, w = frames[0].shape
-        grid_x, grid_y = np.meshgrid(np.arange(w), np.arange(h))
-
-        # Initialize result
-        result = np.zeros((h, w), dtype=float)
-        weights_sum = np.zeros((h, w), dtype=float)
-
-        # For each frame, apply kernel weights
-        for frame in frames:
-            # Calculate structure tensor for adaptive kernels
-            gx = cv2.Sobel(frame, cv2.CV_64F, 1, 0, ksize=3)
-            gy = cv2.Sobel(frame, cv2.CV_64F, 0, 1, ksize=3)
-
-            # Simple structure-adaptive weight (can be more sophisticated)
-            edge_strength = np.sqrt(gx ** 2 + gy ** 2)
-            weight = np.exp(-edge_strength / (2 * bandwidth ** 2))
-
-            # Accumulate weighted values
-            result += frame * weight
-            weights_sum += weight
-
-        # Normalize by weights
-        cum = np.divide(result, weights_sum, where=weights_sum > 0)
-        local_note = f"kernel regression of {len(frames)} frames\n"
 
     else:
         raise ValueError("Invalid method parameter.")
@@ -723,32 +732,37 @@ def cumulate(frames, method='median', update_note=True, bandwidth=6):
     return cum
 
 
-def denoise(image, method='bm3d', weight=8):
+def denoise(image: np.ndarray, method: Literal['bm3d', 'tv'] = None, weight=8) -> np.ndarray:
     """
-    Denoises an image using BM3D algorithm.
-    :param method: Method for denoising. Can be either 'bm3d' or 'tv'.
+    Denoises an image using BM3D or TV.
+    :param method: Method for denoising. Can be either 'bm3d', 'tv' or None.
         For images with lots of small details (like cells), 'bm3d' is recommended.
         For images with large smooth areas (like blood vessels), 'tv' is recommended.
+        If None, the method is chosen based on the region of the image:
+            If the image captures the central region of the eye, 'bm3d' is used. Otherwise, 'tv' is used.
     :param weight: Weight affecting the amount of denoising done. Higher values result in more aggressive denoising.
         Suggested values are 8 for BM3D and 0.05 for TV.
     :param image: Input image as np.ndarray.
     :return: Denoised image as np.ndarray.
     """
-    assert method in ['bm3d', 'tv'], "Invalid method parameter. Supported values are 'bm3d' and 'tv'."
-    global note
+    assert method in ['bm3d', 'tv', None], "Invalid method parameter. Supported values are 'bm3d', 'tv' and None."
+    global note, is_central_region
+
+    if method is None:
+        method = 'bm3d' if is_central_region else 'tv'
 
     if method == 'bm3d':
-        note += f"Denoised with BM3D (sigma={weight})\n"
         # Ensure float32 input in [0,1] range
         image_norm = image.astype(np.float32) / 255
         denoised = bm3d.bm3d(image_norm, sigma_psd=weight / 255, stage_arg=bm3d.BM3DStages.ALL_STAGES)
+        note += f"Denoised with BM3D (sigma={weight})\n"
 
     elif method == 'tv':
         if weight == 8:
             # Override default weight for TV denoising
             weight = 0.05
-        note += f"Denoised with TV (weight={weight})\n"
         denoised = skimage.restoration.denoise_tv_chambolle(image, weight=weight)
+        note += f"Denoised with TV (weight={weight})\n"
 
     else:
         raise ValueError("Invalid method parameter. Supported values are 'bm3d' and 'tv'.")
@@ -760,7 +774,7 @@ def denoise(image, method='bm3d', weight=8):
     # TODO: Zkusit implementovat multi NLM denoising https://docs.opencv.org/3.4/d5/d69/tutorial_py_non_local_means.html
 
 
-def normalize(image):
+def normalize(image: np.ndarray) -> np.ndarray[np.uint8]:
     """
     Normalizes an image to the range [0, 255].
     :param image: Input image as np.ndarray.
@@ -769,7 +783,7 @@ def normalize(image):
     return cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
 
-def match_dimensions(image1, image2=None):
+def match_dimensions(image1: np.ndarray, image2: np.ndarray = None) -> np.ndarray:
     """
     Resizes image1 to 1066 x 1066 pixels. If image2 is provided, it will be resized to match its dimensions instead.
     :param image1: Image to be resized as np.ndarray.
@@ -782,7 +796,7 @@ def match_dimensions(image1, image2=None):
     return cv2.resize(image1, (image2.shape[1], image2.shape[0]), interpolation=cv2.INTER_CUBIC)
 
 
-def assess_quality(image_processed, report_path=None):
+def assess_quality(image_processed: np.ndarray, report_path: str = None):
     """
     Calculates BRISQUE index, PIQE score and sharpness (according to variance of Laplacian) for an image and compares it with a reference image if it was loaded previously using load_reference_image().
     :param image_processed: Processed image as np.ndarray.
