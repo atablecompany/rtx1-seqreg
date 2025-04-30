@@ -742,7 +742,7 @@ np.ndarray[np.uint8]:
         'hamgf': Hybrid Adaptive Median-Gaussian Filter, effectively removes mixed noise while preserving vessel edges.
         If None, the method is chosen based on the region of the image:
             If the image captures the central region of the eye, 'bm3d' is used. Otherwise, 'tv' is used.
-    :param weight: Weight affecting the amount of denoising done. Higher values result in more aggressive denoising.
+    :param weight: Universal weight parameter affecting the amount of denoising done. Higher values result in more aggressive denoising.
         Suggested values are 8 for BM3D, 0.04 for TV, and 2 for HAMGF.
     :param image: Input image as np.ndarray.
     :return: Denoised image as np.ndarray.
@@ -751,7 +751,7 @@ np.ndarray[np.uint8]:
     global note, is_central_region
 
     if method is None:
-        method = 'bm3d' if is_central_region else 'tv'
+        method = 'bm3d' if is_central_region else 'hamgf'
 
     if method == 'bm3d':
         weight = 8 if weight is None else weight
