@@ -210,7 +210,6 @@ def select_frames2(frames: np.ndarray, sharpness: list) -> np.ndarray:
     :param sharpness: List or np.ndarray of sharpness values for frames.
     :return: List of selected frames as np.ndarray.
     """
-    import numpy as np
     global note
 
     sharpness = np.array(sharpness)
@@ -732,40 +731,77 @@ def cumulate(frames: np.ndarray, method: Literal['mean', 'median'] = 'mean', upd
     return cum
 
 
-def denoise(image: np.ndarray, method: Literal['bm3d', 'tv'] = None, weight=8) -> np.ndarray:
+def denoise(image: np.ndarray, method: Literal['bm3d', 'tv', 'bilateral', 'hamgf'] = None, weight: int | float = None) -> \
+np.ndarray[np.uint8]:
     """
-    Denoises an image using BM3D or TV.
-    :param method: Method for denoising. Can be either 'bm3d', 'tv' or None.
-        For images with lots of small details (like cells), 'bm3d' is recommended.
-        For images with large smooth areas (like blood vessels), 'tv' is recommended.
+    Denoises an image using BM3D, TV, bilateral filtering, or HAMGF.
+    :param method: Method for denoising. Can be one of the following:
+        'bm3d': Block-Matching and 3D filtering, recommended for images with lots of small details (like cells).
+        'tv': Total Variation denoising, recommended for images with large smooth areas (like blood vessels).
+        'bilateral': Bilateral filter that preserves edges while smoothing.
+        'hamgf': Hybrid Adaptive Median-Gaussian Filter, effectively removes mixed noise while preserving vessel edges.
         If None, the method is chosen based on the region of the image:
             If the image captures the central region of the eye, 'bm3d' is used. Otherwise, 'tv' is used.
     :param weight: Weight affecting the amount of denoising done. Higher values result in more aggressive denoising.
-        Suggested values are 8 for BM3D and 0.05 for TV.
+        Suggested values are 8 for BM3D, 0.04 for TV, and 2 for HAMGF.
     :param image: Input image as np.ndarray.
     :return: Denoised image as np.ndarray.
     """
-    assert method in ['bm3d', 'tv', None], "Invalid method parameter. Supported values are 'bm3d', 'tv' and None."
+    assert method in ['bm3d', 'tv', 'bilateral', 'hamgf', None], "Invalid method parameter. Supported values are 'bm3d', 'tv', 'bilateral', 'hamgf' and None."
     global note, is_central_region
 
     if method is None:
         method = 'bm3d' if is_central_region else 'tv'
 
     if method == 'bm3d':
+        weight = 8 if weight is None else weight
         # Ensure float32 input in [0,1] range
         image_norm = image.astype(np.float32) / 255
         denoised = bm3d.bm3d(image_norm, sigma_psd=weight / 255, stage_arg=bm3d.BM3DStages.ALL_STAGES)
         note += f"Denoised with BM3D (sigma={weight})\n"
 
     elif method == 'tv':
-        if weight == 8:
-            # Override default weight for TV denoising
-            weight = 0.05
+        weight = 0.04 if weight is None else weight
         denoised = skimage.restoration.denoise_tv_chambolle(image, weight=weight)
         note += f"Denoised with TV (weight={weight})\n"
 
+    elif method == 'bilateral':
+        denoised = skimage.restoration.denoise_bilateral(image)
+        note += f"Denoised with bilateral filter\n"
+
+    elif method == 'hamgf':
+        weight = 2 if weight is None else weight
+        # Hybrid Adaptive Median-Gaussian Filter (HAMGF)
+        # Normalize image to [0,1] range
+        img_float = image.astype(np.float32) / 255.0
+
+        # Step 1: Apply adaptive median filter for impulse noise removal
+        # Scale the median filter size based on the weight parameter
+        median_size = min(7, max(3, 3 + 2 * int(weight / 3)))
+
+        # First apply basic median filter
+        median_filtered = skimage.filters.median(
+            img_float,
+            footprint=skimage.morphology.disk(median_size // 2)
+        )
+
+        # Step 2: Apply edge-preserving Gaussian filtering
+        # Calculate edge response to adapt filter parameters
+        edges = skimage.filters.sobel(median_filtered)
+        edges = edges / edges.max() if edges.max() > 0 else edges
+
+        # Apply Gaussian filter with different sigma based on weight
+        sigma = min(2.0, max(0.5, 0.5 + weight * 0.15))
+        gaussian_filtered = skimage.filters.gaussian(median_filtered, sigma=sigma)
+
+        # Blend results: use median filter result near vessel edges
+        # and Gaussian filter result in smooth regions
+        blend_factor = np.clip(edges * 5, 0, 1)  # Scale up edge response for blending
+        denoised = blend_factor * median_filtered + (1 - blend_factor) * gaussian_filtered
+        note += f"Denoised with HAMGF (weight={weight})\n"
+
     else:
-        raise ValueError("Invalid method parameter. Supported values are 'bm3d' and 'tv'.")
+        raise ValueError("Invalid method parameter. Supported values are 'bm3d', 'tv', 'bilateral', and 'hamgf'.")
 
     # Clamp values to [0,1] range before conversion
     denoised = np.clip(denoised, 0, 1)
@@ -868,4 +904,3 @@ def assess_quality(image_processed: np.ndarray, report_path: str = None):
         return (sharpness_image, sharpness_reference), (sharpness_log_image, sharpness_log_reference), (brisque_image, brisque_reference), (piqe_image, piqe_reference)
     else:
         return sharpness_image, sharpness_log_image, brisque_image, piqe_image
-

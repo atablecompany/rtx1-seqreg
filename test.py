@@ -70,6 +70,7 @@ print(f"Video saved to {output_path}")
 
 #%% Cumulate registered frames
 cum = fundus.cumulate(reg, method='mean')
+# TODO: Zkusit rozdily mezi mean a median
 
 # fundus.save_frame(cum, "C:/Users/tengl/PycharmProjects/dp/pokus/cum_wt3.png")
 # fundus.assess_quality(cum, "C:/Users/tengl/PycharmProjects/dp/pokus/cum_wt3.txt")
@@ -79,15 +80,9 @@ fundus.show_frame(cum)
 fundus.show_frame(reference, custom_note="Reference image\n")
 
 #%% Apply additional denoising
-# sigma = 8
-# cum = fundus.denoise(cum, sigma=sigma)
-# fundus.show_frame(cum, custom_note=f"Denoised with BM3D (sigma={sigma})\n")
-
-# cum = skimage.restoration.denoise_tv_chambolle(cum, 0.05)
-# fundus.show_frame(cum, custom_note=f"Denoised with TV\n")
-
-# cum = cv2.GaussianBlur(cum, (7, 7), 0)
-# fundus.show_frame(cum, custom_note=f"Denoised with Gaussian Blur\n")
+weight = 2
+denoised = fundus.denoise(cum, method='hamgf', weight=weight)
+fundus.show_frame(denoised, custom_note=f"Denoised weight={weight}\n")
 
 #%% Assess quality
 elapsed_time = time.time() - start_time
