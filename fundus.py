@@ -26,8 +26,9 @@ def load_video(video_file_path: str) -> np.ndarray:
     :param video_file_path: Full video filepath.
     :return: Reduced frame stack as np.ndarray.
     """
-    global note, video_path, is_central_region
-    video_path = video_file_path
+    global note, video_path, is_central_region, reference_image
+    reference_image = None  # Reset the reference image for each video
+    video_path = video_file_path  # Reset the video path for each video
     note = ""  # Reset the note for each video
 
     # Check if the video is of the central region
@@ -44,6 +45,7 @@ def load_video(video_file_path: str) -> np.ndarray:
         is_central_region = False
         note += "Video is not of the central region\n"
     else:
+        is_central_region = True
         note += "Video is of the central region\n"
 
     # Open the video file
@@ -185,7 +187,7 @@ def calculate_sharpness(frames: np.ndarray) -> list[float]:
     return avg
 
 
-def select_frames(frames: np.ndarray, sharpness: list, threshold=0.7) -> np.ndarray:
+def select_frames2(frames: np.ndarray, sharpness: list, threshold=0.7) -> np.ndarray:
     """
     Selects sharp frames based on a hard threshold.
     :param frames: Input frame stack as np.ndarray.
@@ -203,7 +205,7 @@ def select_frames(frames: np.ndarray, sharpness: list, threshold=0.7) -> np.ndar
     return selected_frames
 
 
-def select_frames2(frames: np.ndarray, sharpness: list) -> np.ndarray:
+def select_frames(frames: np.ndarray, sharpness: list) -> np.ndarray:
     """
     Selects sharp frames adaptively based on sharpness distribution.
     :param frames: Input frame stack as np.ndarray.
@@ -214,20 +216,20 @@ def select_frames2(frames: np.ndarray, sharpness: list) -> np.ndarray:
 
     sharpness = np.array(sharpness)
     num_frames = len(sharpness)
-    min_select = max(1, int(num_frames * 0.05))  # At least 5% of frames
-    max_select = max(1, int(num_frames * 0.8))   # Up to 80% of frames
+    min_select = max(1, int(num_frames * 0.05))  # At least 5 % of frames (2 frames min out of 40)
+    max_select = max(1, int(num_frames * 0.7))   # Up to 70 % of frames (28 frames max out of 40)
 
     # Measure sharpness variability
     std_sharp = np.std(sharpness)
     mean_sharp = np.mean(sharpness)
-    cv = std_sharp / (mean_sharp + 1e-8)  # Coefficient of variation
+    cv = std_sharp / (mean_sharp + 1e-8)  # Coefficient of variation; + 1e-8 to avoid division by zero
 
     # Stricter mapping: Use a lower cv_max, so high std means fewer frames
-    cv_max = 0.3  # Lower than 0.5, so stricter
+    cv_max = 0.4
     cv = min(cv, cv_max)
     frac = 1 - (cv / cv_max)  # 1 when cv=0, 0 when cv=cv_max
 
-    # Optionally, make the drop-off sharper by squaring frac
+    # Make the drop-off sharper by squaring frac
     frac = frac ** 2  # Makes the function stricter
 
     n_select = int(min_select + frac * (max_select - min_select))
@@ -743,7 +745,7 @@ np.ndarray[np.uint8]:
         If None, the method is chosen based on the region of the image:
             If the image captures the central region of the eye, 'bm3d' is used. Otherwise, 'tv' is used.
     :param weight: Universal weight parameter affecting the amount of denoising done. Higher values result in more aggressive denoising.
-        Suggested values are 8 for BM3D, 0.04 for TV, and 2 for HAMGF.
+        Suggested values are 6 for BM3D, 0.04 for TV, and 2 for HAMGF.
     :param image: Input image as np.ndarray.
     :return: Denoised image as np.ndarray.
     """
@@ -754,7 +756,7 @@ np.ndarray[np.uint8]:
         method = 'bm3d' if is_central_region else 'hamgf'
 
     if method == 'bm3d':
-        weight = 8 if weight is None else weight
+        weight = 6 if weight is None else weight
         # Ensure float32 input in [0,1] range
         image_norm = image.astype(np.float32) / 255
         denoised = bm3d.bm3d(image_norm, sigma_psd=weight / 255, stage_arg=bm3d.BM3DStages.ALL_STAGES)
@@ -807,7 +809,6 @@ np.ndarray[np.uint8]:
     denoised = np.clip(denoised, 0, 1)
 
     return (denoised * 255).astype(np.uint8)
-    # TODO: Zkusit implementovat multi NLM denoising https://docs.opencv.org/3.4/d5/d69/tutorial_py_non_local_means.html
 
 
 def normalize(image: np.ndarray) -> np.ndarray[np.uint8]:
@@ -897,8 +898,6 @@ def assess_quality(image_processed: np.ndarray, report_path: str = None):
                     f"Sharpness (var_of_LoG = {sharpness_log_reference:.2f}\n"
                     f"BRISQUE index = {brisque_reference:.2f}\n"
                     f"PIQE index = {piqe_reference:.2f}\n")
-
-    note = ""  # Reset note
 
     if reference is not None:
         return (sharpness_image, sharpness_reference), (sharpness_log_image, sharpness_log_reference), (brisque_image, brisque_reference), (piqe_image, piqe_reference)

@@ -10,13 +10,16 @@ import skimage
 #%% Import video file
 # video_path = "G:\PapyrusSorted\AVINA ZAVALA_Marta Ester_19860214_FEMALE\OD_20240405143339\OD_20240405143339_X2.0N_Y0.0_Z0.0_AVINA ZAVALA_Marta Ester_451.mpg"
 # video_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506114845\OD_20240506114845_X2.0N_Y0.0_Z0.0_ABADZHIEVA_Polina_496.mpg"
+video_path = "G:\PapyrusSorted\FRICKER_Isabelle_19880404_FEMALE\OD_20231123140522\OD_20231123140522_X0.0T_Y-2.0_Z0.0_FRICKER_Isabelle_007.mpg"
 
 # Nektere pripady
 # video_path = "G:\PapyrusSorted\ALLERT_Mandy_19840402_FEMALE\OD_20231120102058\OD_20231120102058_X10.7N_Y8.1_Z70.0_ALLERT_Mandy_234.mpg"
 # video_path = "G:\PapyrusSorted\AUERBACH_Nancy_19920617_FEMALE\OD_20231219143706\OD_20231219143706_X2.0N_Y0.0_Z0.0_AUERBACH_Nancy_NS018.mpg"
 # video_path = "G:\PapyrusSorted\AL KHAKANI_Denise_19890818_FEMALE\OD_20240611115725\OD_20240611115725_X0.0T_Y-2.0_Z0.0_AL KHAKANI_Denise_550.mpg"
 # video_path = "G:\PapyrusSorted\AWADALLAH_Sara_19980829_FEMALE\OD_20240503142217\OD_20240503142217_X10.2N_Y6.5_Z120.0_AWADALLAH_Sara_155.mpg"
-video_path = "G:\PapyrusSorted\ABDEL_Eman_19860604_FEMALE\OD_20240320145026\OD_20240320145026_X11.7N_Y7.4_Z180.0_ABDEL_Eman_201.mpg"
+# video_path = "G:\PapyrusSorted\ABDEL_Eman_19860604_FEMALE\OD_20240320145026\OD_20240320145026_X11.7N_Y7.4_Z180.0_ABDEL_Eman_201.mpg"
+# video_path = "G:\PapyrusSorted\BUECH_Eva_19811017_FEMALE\OD_20231215125017\OD_20231215125017_X11.6N_Y-6.8_Z160.0_BUECH_Eva_237.mpg"
+# video_path = "G:\PapyrusSorted\ALLRICH_Ina_19870402_FEMALE\OD_20240605110908\OD_20240605110908_X0.0T_Y2.0_Z10.0_ALLRICH_Ina_520.mpg"
 
 reference_path = video_path.replace(".mpg", ".png")
 report_path = video_path.replace(".mpg", "_report_test.txt")
@@ -28,9 +31,10 @@ print(frames.shape)
 #%% Determine the sharpness of frames
 # metric = 'loc_var_of_gray'
 sharpness = fundus.calculate_sharpness(frames)
-sharpness_threshold = 0.8
+selected_frames = fundus.select_frames(frames, sharpness)
+
+# sharpness_threshold = 0.8
 # selected_frames = fundus.select_frames(frames, sharpness, threshold=sharpness_threshold)
-selected_frames = fundus.select_frames2(frames, sharpness)
 
 #%% Show individual frames
 # for i in range(len(frames)):
@@ -39,7 +43,7 @@ selected_frames = fundus.select_frames2(frames, sharpness)
 #%% Plot sharpness over frames
 plt.figure(figsize=(10, 6))
 plt.plot(sharpness, marker='o', linestyle='-', color='b')
-plt.axhline(y=sharpness_threshold, color='r', linestyle='--', label='Sharpness Threshold')
+plt.axhline(color='r', linestyle='--', label='Sharpness Threshold')
 plt.title(f'Sharpness over frames (avg)')
 plt.xlabel('Frame index')
 plt.ylabel('Sharpness')
@@ -80,9 +84,9 @@ fundus.show_frame(cum)
 fundus.show_frame(reference, custom_note="Reference image\n")
 
 #%% Apply additional denoising
-weight = 2
-denoised = fundus.denoise(cum, method='hamgf', weight=weight)
-fundus.show_frame(denoised, custom_note=f"Denoised weight={weight}\n")
+# weight = 2
+denoised = fundus.denoise(cum)
+fundus.show_frame(denoised, custom_note=f"Denoised\n")
 
 #%% Assess quality
 elapsed_time = time.time() - start_time
