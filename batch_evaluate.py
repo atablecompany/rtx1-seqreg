@@ -57,7 +57,7 @@ def parse_metrics_file(filename):
 
 # Specify the directory containing text files
 project_directory = "G:\PapyrusSorted"
-report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive.txt"), recursive=True)
+report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive3.txt"), recursive=True)
 
 sharpness_images = []
 sharpness_log_images = []
@@ -91,7 +91,7 @@ def create_standard_boxplots(image_data, reference_data, metrics):
         ax.set_title(metric, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
 
-    plt.suptitle('Image Quality Metrics Comparison: Processed vs Reference. Sharpness threshold=adaptive (0.3 + **2)',
+    plt.suptitle('Image Quality Metrics Comparison: Processed vs Reference. Sharpness threshold=adaptive (0.4 + **2). Mean cumulation.',
                  y=0.98,  # Position slightly below top
                  fontsize=14,
                  fontweight='bold')
@@ -124,6 +124,8 @@ create_standard_boxplots(image_data, reference_data, metrics)
 
 
 #%% Identify outliers
+
+
 def detect_outliers_iqr(data):
     data = np.array(data)
     q1 = np.percentile(data, 15)
@@ -143,12 +145,13 @@ metrics = {
     'piqe_images': piqe_images
 }
 
-outlier_files = set()
+outlier_folders = set()
 for metric, values in metrics.items():
     outlier_indices = detect_outliers_iqr(values)
     for idx in outlier_indices:
-        outlier_files.add(report_files[idx])
+        folder = os.path.dirname(report_files[idx])
+        outlier_folders.add(folder)
 
-print("Outlier files:")
-for filename in outlier_files:
-    print(filename)
+print("Outlier folders:")
+for folder in outlier_folders:
+    print(folder)

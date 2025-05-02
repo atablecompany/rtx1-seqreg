@@ -14,13 +14,16 @@ def process_video(video_path):
     # selected_frames = fundus.select_frames(frames, sharpness, threshold=0.8)
     selected_frames = fundus.select_frames(frames, sharpness)
     reg = fundus.register(selected_frames, sharpness, reference='best')
+    # TODO: Možná použít pro necentrální oblasti flexibilní registraci
     cum = fundus.cumulate(reg)
     _, _, brisque, piqe = fundus.assess_quality(cum)
     if brisque[0] > brisque[1] or piqe[0] > piqe[1] or len(selected_frames) < 10:
         cum = fundus.denoise(cum)  # Apply denoising if quality is worse than reference or if noise level is too high
-    output_path = video_path.replace(".mpg", "_processed_adaptive.png")
+        # TODO: Možná forcnout hamgf denoising pro všechny když jsou míň jak 3 snímky?
+        # TODO: Možná měnit váhu denoisingu podle počtu snímků?
+    output_path = video_path.replace(".mpg", "_processed_adaptive3.png")
     fundus.save_frame(cum, output_path)
-    report_path = video_path.replace(".mpg", "_report_adaptive.txt")
+    report_path = video_path.replace(".mpg", "_report_adaptive3.txt")
     fundus.assess_quality(cum, report_path)
     return video_path  # Return path for progress tracking
 
@@ -30,10 +33,10 @@ if __name__ == "__main__":
     video_files = glob.glob(os.path.join(video_directory, "**", "*.mpg"), recursive=True)
 
     # Select 300 random files based on a seed
-    random.seed(23)  # Set seed for reproducibility
-    video_files = random.sample(video_files, 300)
+    # random.seed(23)  # Set seed for reproducibility
+    # video_files = random.sample(video_files, 300)
 
-    with ProcessPoolExecutor(max_workers=8) as executor:
+    with ProcessPoolExecutor(max_workers=6) as executor:
         # Submit all video processing tasks
         futures = [executor.submit(process_video, file) for file in video_files]
 
