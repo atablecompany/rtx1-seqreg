@@ -12,6 +12,14 @@ import bm3d
 import re
 import os
 from typing import Literal
+import sys
+import types
+from torchvision.transforms.functional import rgb_to_grayscale
+functional_tensor = types.ModuleType("torchvision.transforms.functional_tensor")
+functional_tensor.rgb_to_grayscale = rgb_to_grayscale
+sys.modules["torchvision.transforms.functional_tensor"] = functional_tensor
+from basicsr.metrics.niqe import calculate_niqe
+
 
 note = ""  # Initialize a note to be displayed in the title of the image or printed in the report
 video_path = None
@@ -83,6 +91,7 @@ def load_video(video_file_path: str) -> np.ndarray:
 def load_reference_image(reference_path: str) -> np.ndarray:
     """
     Loads a reference image.
+    Always load a video first, then load the reference image.
     :param reference_path: Path to the reference image.
     :return: Reference image as np.ndarray.
     """
@@ -225,7 +234,7 @@ def select_frames(frames: np.ndarray, sharpness: list) -> np.ndarray:
     cv = std_sharp / (mean_sharp + 1e-8)  # Coefficient of variation; + 1e-8 to avoid division by zero
 
     # Stricter mapping: Use a lower cv_max, so high std means fewer frames
-    cv_max = 0.4
+    cv_max = 0.5
     cv = min(cv, cv_max)
     frac = 1 - (cv / cv_max)  # 1 when cv=0, 0 when cv=cv_max
 
@@ -835,7 +844,8 @@ def match_dimensions(image1: np.ndarray, image2: np.ndarray = None) -> np.ndarra
 
 def assess_quality(image_processed: np.ndarray, report_path: str = None):
     """
-    Calculates BRISQUE index, PIQE score and sharpness (according to variance of Laplacian) for an image and compares it with a reference image if it was loaded previously using load_reference_image().
+    Assesses the quality of a processed image and compares it with a reference image if provided.
+    Calculates BRISQUE index, PIQE score and sharpness (according to variance of Laplacian) for an image and compares its scores with those of the reference image if it was loaded previously using load_reference_image().
     :param image_processed: Processed image as np.ndarray.
     :param report_path: Path to save the report text file. If no path is provided, no report will be generated.
     :return: Sharpness, BRISQUE index and PIQE score for the processed image. If a reference image was provided, it will return both sets of scores as tuples (processed_image, reference_image).
@@ -862,6 +872,14 @@ def assess_quality(image_processed: np.ndarray, report_path: str = None):
     # Calculate PIQE score for processed image
     piqe_image, _, _, _ = piqe(image_processed)
 
+    # Calculate NIQE score for processed image
+    niqe_image = calculate_niqe(
+        image_processed.astype(np.float32),
+        crop_border=0,
+        input_order='HW',
+        convert_to='y'
+    )
+
     if reference is not None:
         # Calculate sharpness of the reference image
         sharpness_reference = calculate_sharpness2(reference, blur=False)
@@ -872,6 +890,15 @@ def assess_quality(image_processed: np.ndarray, report_path: str = None):
 
         # Calculate PIQE score of the reference image
         piqe_reference, _, _, _ = piqe(reference)
+
+        # Calculate NIQE score of the reference image
+        # noinspection PyUnresolvedReferences
+        niqe_reference = calculate_niqe(
+            reference.astype(np.float32),
+            crop_border=0,
+            input_order='HW',
+            convert_to='y'
+        )
 
     else:
         # If no reference is provided, return None
@@ -891,15 +918,18 @@ def assess_quality(image_processed: np.ndarray, report_path: str = None):
                     f"Sharpness (var_of_LoG) = {sharpness_log_image:.2f}\n"
                     f"BRISQUE index = {brisque_image:.2f}\n"
                     f"PIQE index = {piqe_image:.2f}\n"
+                    f"NIQE index = {niqe_image:.2f}\n"
                     f"\n")
             f.write(f"No reference image provided\n" if reference is None else
                     f"Reference image:\n"
                     f"Sharpness (var_of_laplacian) = {sharpness_reference:.2f}\n"
                     f"Sharpness (var_of_LoG = {sharpness_log_reference:.2f}\n"
                     f"BRISQUE index = {brisque_reference:.2f}\n"
-                    f"PIQE index = {piqe_reference:.2f}\n")
+                    f"PIQE index = {piqe_reference:.2f}\n"
+                    f"NIQE index = {niqe_reference:.2f}\n"
+                    f"\n")
 
     if reference is not None:
-        return (sharpness_image, sharpness_reference), (sharpness_log_image, sharpness_log_reference), (brisque_image, brisque_reference), (piqe_image, piqe_reference)
+        return (sharpness_log_image, sharpness_log_reference), (brisque_image, brisque_reference), (piqe_image, piqe_reference), (niqe_image, niqe_reference)
     else:
-        return sharpness_image, sharpness_log_image, brisque_image, piqe_image
+        return sharpness_log_image, brisque_image, piqe_image, niqe_image

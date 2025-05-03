@@ -33,8 +33,8 @@ def parse_metrics_file(filename):
                     value = float(value.strip())
 
                     if current_section == 'processed':
-                        if 'var_of_laplacian' in key:
-                            sharpness_images.append(value)
+                        if 'NIQE' in key:
+                            niqe_images.append(value)
                         elif 'var_of_LoG' in key:
                             sharpness_log_images.append(value)
                         elif 'BRISQUE' in key:
@@ -43,8 +43,8 @@ def parse_metrics_file(filename):
                             piqe_images.append(value)
 
                     elif current_section == 'reference':
-                        if 'var_of_laplacian' in key:
-                            sharpness_references.append(value)
+                        if 'NIQE' in key:
+                            niqe_references.append(value)
                         elif 'var_of_LoG' in key:
                             sharpness_log_references.append(value)
                         elif 'BRISQUE' in key:
@@ -57,17 +57,17 @@ def parse_metrics_file(filename):
 
 # Specify the directory containing text files
 project_directory = "G:\PapyrusSorted"
-report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive3.txt"), recursive=True)
+report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive5.txt"), recursive=True)
 
-sharpness_images = []
 sharpness_log_images = []
 brisque_images = []
 piqe_images = []
+niqe_images = []
 
-sharpness_references = []
 sharpness_log_references = []
 brisque_references = []
 piqe_references = []
+niqe_references = []
 
 # Loop through all files and process each
 for report_file in report_files:
@@ -91,7 +91,7 @@ def create_standard_boxplots(image_data, reference_data, metrics):
         ax.set_title(metric, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
 
-    plt.suptitle('Image Quality Metrics Comparison: Processed vs Reference. Sharpness threshold=adaptive (0.4 + **2). Mean cumulation.',
+    plt.suptitle('Image Quality Metrics Comparison: Processed vs Reference. Sharpness threshold=adaptive (0.5 + **2). Mean cumulation.',
                  y=0.98,  # Position slightly below top
                  fontsize=14,
                  fontweight='bold')
@@ -103,14 +103,14 @@ def create_standard_boxplots(image_data, reference_data, metrics):
 
 # Prepare data (using your lists)
 metrics = [
-    'Sharpness (var_of_laplacian)',
+    'NIQE Index',
     'Sharpness (var_of_LoG)',
     'BRISQUE Index',
     'PIQE Index'
 ]
 
 data_arrays = [
-    (sharpness_images, sharpness_references),
+    (niqe_images, niqe_references),
     (sharpness_log_images, sharpness_log_references),
     (brisque_images, brisque_references),
     (piqe_images, piqe_references)
@@ -124,12 +124,10 @@ create_standard_boxplots(image_data, reference_data, metrics)
 
 
 #%% Identify outliers
-
-
 def detect_outliers_iqr(data):
     data = np.array(data)
-    q1 = np.percentile(data, 15)
-    q3 = np.percentile(data, 85)
+    q1 = np.percentile(data, 100)  # 15
+    q3 = np.percentile(data, 0)  # 85
     iqr = q3 - q1
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr
@@ -139,10 +137,10 @@ def detect_outliers_iqr(data):
 
 
 metrics = {
-    # 'sharpness_images': sharpness_images,
     'sharpness_log_images': sharpness_log_images,
     'brisque_images': brisque_images,
-    'piqe_images': piqe_images
+    'piqe_images': piqe_images,
+    'niqe_images': niqe_images
 }
 
 outlier_folders = set()
@@ -155,3 +153,11 @@ for metric, values in metrics.items():
 print("Outlier folders:")
 for folder in outlier_folders:
     print(folder)
+
+
+#%%
+# Print a list of folders where the brisque index is lower than 0
+for idx, value in enumerate(brisque_images):
+    if value < 0:
+        folder = os.path.dirname(report_files[idx])
+        print(folder)
