@@ -389,14 +389,17 @@ def extend_to_union(frames: np.ndarray, update_note=True) -> np.ndarray:
 def register(
         selected_frames: np.ndarray,
         sharpness: list,
-        reference: Literal['best', 'previous'] = 'best',
+        reference: Literal['best', 'previous', 'mean'] = None,
         pad: Literal['same', 'crop', 'zeros'] = 'same',
         update_note=True
 ) -> np.ndarray:
     """
     Registers the sharpest frames using the pyStackReg library and returns a stack of registered frames.
     :param update_note: Controls whether to update the note variable. Mainly for debug use.
-    :param reference: Either 'previous' or 'best'. If 'previous', each frame is registered to its previous (already registered) frame in the stack. If 'best', each frame is registered to the sharpest frame in the stack.
+    :param reference: Either 'previous', 'best' or 'mean'.
+        If 'previous', each frame is registered to its previous (already registered) frame in the stack.
+        If 'best', each frame is registered to the sharpest frame in the stack.
+        If 'mean', each frame is registered to a mean frame of reference.
     :param selected_frames: Stack of frames to be registered as np.ndarray.
     :param sharpness: List of sharpness values for frames.
     :param pad: Either 'same', 'intersection', or 'zeros'.
@@ -406,7 +409,7 @@ def register(
     :return: Stack of registered frames as np.ndarray.
     """
     assert pad in ['same', 'crop', 'zeros'], "Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'."
-    assert reference in ['best', 'previous'], "Invalid reference parameter. Supported values are 'best' and 'previous'."
+    assert reference in ['best', 'previous', 'mean'], "Invalid reference parameter. Supported values are 'best', 'previous' and 'mean'."
     global note, reference_image
     local_note = f"Registration method: pyStackReg\nReference: '{reference}'\n"
 
@@ -417,13 +420,24 @@ def register(
         if update_note:
             note += local_note
         return selected_frames
+
     else:
+        if reference is None:
+            reference = 'best' if is_central_region else 'mean'  # Default to 'best' for central region, 'mean' for non-central region
+
         if reference == 'previous':
             # Register to previous frame in the stack
             # Perform registration
             sr = StackReg(StackReg.RIGID_BODY)
             out_rigid_stack = sr.register_transform_stack(selected_frames, reference='previous')
             out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
+
+        elif reference == 'mean':
+            # Register to the mean of the stack
+            # Perform registration
+            sr = StackReg(StackReg.RIGID_BODY)
+            out_rigid_stack = sr.register_transform_stack(selected_frames, reference='mean')
+            out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)
 
         elif reference == 'best':
             # Register to the sharpest frame
@@ -432,13 +446,13 @@ def register(
             # Move the sharpest frame to the first position in the stack
             selected_frames = np.roll(selected_frames, -best_frame_index, axis=0)
 
-            # Perform registration
+            # Perform registration to the previous frame in the stack
             sr = StackReg(StackReg.RIGID_BODY)
             out_rigid_stack = sr.register_transform_stack(selected_frames, reference='first')
             out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
 
         else:
-            raise ValueError("Invalid reference parameter. Supported values are 'best' and 'previous'.")
+            raise ValueError("Invalid reference parameter. Supported values are 'best', 'previous' and 'mean'.")
 
         if pad == 'crop':
             # Crop images to their intersection
@@ -452,6 +466,7 @@ def register(
             raise ValueError("Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'.")
 
         # This section is used to check if the processed image is sharper than the reference image and to re-register if necessary
+        # TODO: Možná ten check oddělat a nechat všechno na 'mean'
         if reference_image is not None:
             # Cumulate the registered frames
             cum = cumulate(out_rigid_stack, update_note=False)
@@ -463,9 +478,25 @@ def register(
                 # print("zkusme to znova")
                 # Register again but switch reference
                 reference_new = 'previous' if reference == 'best' else 'best'
-                sr = StackReg(StackReg.RIGID_BODY)
-                out_rigid_stack2 = sr.register_transform_stack(selected_frames, reference=reference_new)
-                out_rigid_stack2 = np.clip(out_rigid_stack2, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
+
+                if reference_new == 'best':
+                    # Find the sharpest frame and move it to the first position in the stack
+                    best_frame_index = np.argmax(sharpness)  # Find the sharpest frame
+                    # Move the sharpest frame to the first position in the stack
+                    selected_frames = np.roll(selected_frames, -best_frame_index, axis=0)
+                    # Perform registration
+                    sr = StackReg(StackReg.RIGID_BODY)
+                    out_rigid_stack2 = sr.register_transform_stack(selected_frames, reference='first')
+                    out_rigid_stack2 = np.clip(out_rigid_stack2, 0, 255).astype(
+                        np.uint8)  # Ensure pixel values are within [0, 255]
+
+                elif reference_new == 'previous':
+                    # Perform registration to the previous frame in the stack
+                    sr = StackReg(StackReg.RIGID_BODY)
+                    out_rigid_stack2 = sr.register_transform_stack(selected_frames, reference='previous')
+                    out_rigid_stack2 = np.clip(out_rigid_stack2, 0, 255).astype(
+                        np.uint8)  # Ensure pixel values are within [0, 255]
+
                 # Cumulate the registered frames
                 cum2 = cumulate(out_rigid_stack2, update_note=False)
                 # Check if the processed image is sharper than reference

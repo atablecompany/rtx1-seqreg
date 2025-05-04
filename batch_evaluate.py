@@ -57,7 +57,7 @@ def parse_metrics_file(filename):
 
 # Specify the directory containing text files
 project_directory = "G:\PapyrusSorted"
-report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive5.txt"), recursive=True)
+report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive6.txt"), recursive=True)
 
 sharpness_log_images = []
 brisque_images = []
@@ -91,7 +91,7 @@ def create_standard_boxplots(image_data, reference_data, metrics):
         ax.set_title(metric, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
 
-    plt.suptitle('Image Quality Metrics Comparison: Processed vs Reference. Sharpness threshold=adaptive (0.5 + **2). Mean cumulation.',
+    plt.suptitle('Sharpness threshold=adaptive (0.5 + **2). Reg reference=\'mean\'. Mean cumulation. Denoise all central with bm3d, non-central with hamgf.',
                  y=0.98,  # Position slightly below top
                  fontsize=14,
                  fontweight='bold')
@@ -126,8 +126,8 @@ create_standard_boxplots(image_data, reference_data, metrics)
 #%% Identify outliers
 def detect_outliers_iqr(data):
     data = np.array(data)
-    q1 = np.percentile(data, 100)  # 15
-    q3 = np.percentile(data, 0)  # 85
+    q1 = np.percentile(data, 15)  # 15
+    q3 = np.percentile(data, 85)  # 85
     iqr = q3 - q1
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr

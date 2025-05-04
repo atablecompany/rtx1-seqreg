@@ -10,14 +10,15 @@ import skimage
 # video_path = "G:\PapyrusSorted\AVINA ZAVALA_Marta Ester_19860214_FEMALE\OD_20240405143339\OD_20240405143339_X2.0N_Y0.0_Z0.0_AVINA ZAVALA_Marta Ester_451.mpg"
 # video_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506114845\OD_20240506114845_X2.0N_Y0.0_Z0.0_ABADZHIEVA_Polina_496.mpg"
 # video_path = "G:\PapyrusSorted\FRICKER_Isabelle_19880404_FEMALE\OD_20231123140522\OD_20231123140522_X0.0T_Y-2.0_Z0.0_FRICKER_Isabelle_007.mpg"
-video_path = "G:\PapyrusSorted\BECK_Hanna_19870504_FEMALE\OD_20240327091635\OD_20240327091635_X0.0T_Y2.0_Z30.0_BECK_Hanna_192.mpg"
+# video_path = "G:\PapyrusSorted\BECK_Hanna_19870504_FEMALE\OD_20240327091635\OD_20240327091635_X0.0T_Y2.0_Z30.0_BECK_Hanna_192.mpg"
 
 # Nektere pripady
 # video_path = "G:\PapyrusSorted\BUECH_Eva_19811017_FEMALE\OD_20231215124843\OD_20231215124843_X2.0N_Y0.0_Z0.0_BUECH_Eva_237.mpg"  # Koregistrovalo to různý oblasti
 # video_path = "G:\PapyrusSorted\FRANZ_Juliane_19910412_FEMALE\OD_20231220104415\OD_20231220104415_X13.7N_Y4.9_Z170.0_FRANZ_Juliane_271.mpg"  # Koregistrovalo to různý oblasti
+# video_path = "G:\PapyrusSorted\BOERNER_Carolin_20050614_FEMALE\OD_20240104122715\OD_20240104122715_X10.5N_Y8.5_Z120.0_BOERNER_Carolin_311.mpg"  # Koregistrovalo to různý oblasti
 # TODO: Co s tím? Když to registruje různý oblasti?
 # video_path = "G:\PapyrusSorted\BUEGIEL_Patricia_19860111_FEMALE\OD_20240215124239\OD_20240215124239_X2.0T_Y0.0_Z0.0_BUEGIEL_Patricia_354.mpg"  # Většina outlierů ale vypadá takhle (není tam nic, jenom šum)
-# video_path = "G:\PapyrusSorted\FARR_Anja_19850912_FEMALE\OD_20231219102331\OD_20231219102331_X10.8N_Y8.3_Z150.0_FARR_Anja_295.mpg"  # Tady je vysledek straightup horší než reference
+video_path = "G:\PapyrusSorted\FARR_Anja_19850912_FEMALE\OD_20231219102331\OD_20231219102331_X10.8N_Y8.3_Z150.0_FARR_Anja_295.mpg"  # Tady je vysledek straightup horší než reference
 # video_path = "G:\PapyrusSorted\BUECH_Eva_19811017_FEMALE\OD_20231215125017\OD_20231215125017_X11.6N_Y-6.8_Z160.0_BUECH_Eva_237.mpg"  # Tady je moc velkej pohyb a tak to špatně koregistrovalo
 # video_path = "G:\PapyrusSorted\CIKAJ_Ajne_19870102_FEMALE\OD_20231120112629\OD_20231120112629_X10.4N_Y8.1_Z140.0_CIKAJ_Ajne_235.mpg"  # Špatnej ořez (rozšíření) vkůli černýmu pruhu vpravo
 # video_path = "G:\PapyrusSorted\FREIER_Sophie_19901012_FEMALE\OD_20240523094753\OD_20240523094753_X0.0T_Y2.0_Z-10.0_FREIER_Sophie_213.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
@@ -61,7 +62,7 @@ plt.grid(True)
 plt.show()
 
 #%% Perform registration
-reg = fundus.register(selected_frames, sharpness, reference='best', pad='same')
+reg = fundus.register(selected_frames, sharpness, reference='mean', pad='same')
 # TODO: Register pomoci elastixu v podstate vubec nefunguje
 # for i in range(len(reg)):
 #     fundus.save_frame(reg[i], f"C:/Users/tengl/PycharmProjects/dp/reg/frame_{i}.png")
