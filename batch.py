@@ -12,7 +12,7 @@ def process_video(video_path):
     fundus.load_reference_image(reference_path)  # Load reference image
     sharpness = fundus.calculate_sharpness(frames)  # Calculate sharpness of frames
     selected_frames = fundus.select_frames(frames, sharpness)  # Select sharp frames
-    reg = fundus.register(selected_frames, sharpness, reference='best')  # Register selected frames
+    reg = fundus.register(selected_frames, sharpness, reference='mean')  # Register selected frames
     # TODO: Spustit s referencí 'mean' na všechny a uvidíme jestli má vůbec cenu řešit 'previous' a 'best'
     cum = fundus.cumulate(reg)  # Cumulate registered frames
     if fundus.is_central_region:
@@ -34,17 +34,19 @@ if __name__ == "__main__":
     video_directory = "G:\PapyrusSorted"
     video_files = glob.glob(os.path.join(video_directory, "**", "*.mpg"), recursive=True)
 
-    # Select 300 random files based on a seed
-    # random.seed(37)  # Set seed for reproducibility
-    # video_files = random.sample(video_files, 20)
-
-    with ProcessPoolExecutor(max_workers=4) as executor:
-        # Submit all video processing tasks
-        futures = [executor.submit(process_video, file) for file in video_files]
-
-        # Initialize progress bar
-        with tqdm(total=len(video_files), desc="Processing videos") as pbar:
-            # Update progress as tasks complete
-            for future in as_completed(futures):
-                future.result()  # Get result (or raise exception)
-                pbar.update(1)
+    # Select random files based on a seed
+    random.seed()  # Set seed for reproducibility
+    video_files = random.sample(video_files, 20)
+    for i, video in enumerate(video_files):
+        print(str(i + 1) + " " + video) # Print selected video files
+    #
+    # with ProcessPoolExecutor(max_workers=4) as executor:
+    #     # Submit all video processing tasks
+    #     futures = [executor.submit(process_video, file) for file in video_files]
+    #
+    #     # Initialize progress bar
+    #     with tqdm(total=len(video_files), desc="Processing videos") as pbar:
+    #         # Update progress as tasks complete
+    #         for future in as_completed(futures):
+    #             future.result()  # Get result (or raise exception)
+    #             pbar.update(1)

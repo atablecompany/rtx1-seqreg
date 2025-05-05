@@ -18,10 +18,10 @@ import skimage
 # video_path = "G:\PapyrusSorted\BOERNER_Carolin_20050614_FEMALE\OD_20240104122715\OD_20240104122715_X10.5N_Y8.5_Z120.0_BOERNER_Carolin_311.mpg"  # Koregistrovalo to různý oblasti
 # TODO: Co s tím? Když to registruje různý oblasti?
 # video_path = "G:\PapyrusSorted\BUEGIEL_Patricia_19860111_FEMALE\OD_20240215124239\OD_20240215124239_X2.0T_Y0.0_Z0.0_BUEGIEL_Patricia_354.mpg"  # Většina outlierů ale vypadá takhle (není tam nic, jenom šum)
-video_path = "G:\PapyrusSorted\FARR_Anja_19850912_FEMALE\OD_20231219102331\OD_20231219102331_X10.8N_Y8.3_Z150.0_FARR_Anja_295.mpg"  # Tady je vysledek straightup horší než reference
+# video_path = "G:\PapyrusSorted\FARR_Anja_19850912_FEMALE\OD_20231219102331\OD_20231219102331_X10.8N_Y8.3_Z150.0_FARR_Anja_295.mpg"  # Tady je vysledek straightup horší než reference
 # video_path = "G:\PapyrusSorted\BUECH_Eva_19811017_FEMALE\OD_20231215125017\OD_20231215125017_X11.6N_Y-6.8_Z160.0_BUECH_Eva_237.mpg"  # Tady je moc velkej pohyb a tak to špatně koregistrovalo
 # video_path = "G:\PapyrusSorted\CIKAJ_Ajne_19870102_FEMALE\OD_20231120112629\OD_20231120112629_X10.4N_Y8.1_Z140.0_CIKAJ_Ajne_235.mpg"  # Špatnej ořez (rozšíření) vkůli černýmu pruhu vpravo
-# video_path = "G:\PapyrusSorted\FREIER_Sophie_19901012_FEMALE\OD_20240523094753\OD_20240523094753_X0.0T_Y2.0_Z-10.0_FREIER_Sophie_213.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
+video_path = "G:\PapyrusSorted\FREIER_Sophie_19901012_FEMALE\OD_20240523094753\OD_20240523094753_X0.0T_Y2.0_Z-10.0_FREIER_Sophie_213.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
 # video_path = "G:\PapyrusSorted\AS-II_Aiza_19850619_FEMALE\OD_20231218140208\OD_20231218140208_X0.0T_Y-2.0_Z0.0_AS-II_Aiza_NS014.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
 # video_path = "G:\PapyrusSorted\AL-EESO_Nariman Salman Khalaf_19900324_FEMALE\OD_20230608144231\OD_20230608144231_X0.0T_Y-2.0_Z30.0_AL-EESO_Nariman Salman Khalaf_P017.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
 # video_path = "G:\PapyrusSorted\BUKWITSCHKA_Tina_19910306_FEMALE\OD_20230430132545\OD_20230430132545_X0.2N_Y-0.6_Z0.0_BUKWITSCHKA_Tina.mpg"  # Proč to vzalo jen 2 snímky??

@@ -91,13 +91,13 @@ def create_standard_boxplots(image_data, reference_data, metrics):
         ax.set_title(metric, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
 
-    plt.suptitle('Sharpness threshold=adaptive (0.5 + **2). Reg reference=\'mean\'. Mean cumulation. Denoise all central with bm3d, non-central with hamgf.',
+    plt.suptitle('Sharpness threshold=adaptive (0.5 + **2). Reg reference=\'mean\'. Mean cumulation.\nDenoise all central with bm3d, all non-central with hamgf.',
                  y=0.98,  # Position slightly below top
                  fontsize=14,
                  fontweight='bold')
 
     # Adjust layout with increased top padding
-    plt.tight_layout(rect=[0, 0, 1, 0.96])  # rect=[left, bottom, right, top]
+    plt.tight_layout(rect=[0, 0, 1, 0.98])  # rect=[left, bottom, right, top]
     plt.show()
 
 
