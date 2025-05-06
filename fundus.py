@@ -868,11 +868,15 @@ def resize(image: np.ndarray, target_dimensions: tuple[int, int] | np.ndarray) -
     :param target_dimensions: Dimensions of the target image as tuple or image to be used as a target as np.ndarray.
     :return: Resized image1 as np.ndarray.
     """
+    global note
+
     if isinstance(target_dimensions, tuple):
         image_resized = cv2.resize(image, target_dimensions, interpolation=cv2.INTER_CUBIC)
+        note += f"Resized to {target_dimensions}\n"
 
     elif isinstance(target_dimensions, np.ndarray):
         image_resized = cv2.resize(image, (target_dimensions.shape[1], target_dimensions.shape[0]), interpolation=cv2.INTER_CUBIC)
+        note += f"Resized to ({target_dimensions.shape[1]}, {target_dimensions.shape[0]})\n"
 
     else:
         raise ValueError("Parameter target_dimensions must be a tuple or an image (np.ndarray).")
