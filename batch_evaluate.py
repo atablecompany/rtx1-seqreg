@@ -5,12 +5,29 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-#%% Parse data
-def parse_metrics_file(filename):
+# %% Parse data
+def parse_metrics_file(filename, central_metrics, noncentral_metrics):
     current_section = None
+    is_central = None
 
     with open(filename, 'r') as file:
-        for line in file:
+        lines = file.readlines()
+
+        # First, scan the file for region information
+        for line in lines:
+            if "Video is of the central region" in line:
+                is_central = True
+                break
+            elif "Video is not of the central region" in line:
+                is_central = False
+                break
+
+        # If region information was not found, return None
+        if is_central is None:
+            return None
+
+        # Now process the file again to collect metrics
+        for line in lines:
             line = line.strip()
 
             # Skip section headers and empty lines
@@ -32,53 +49,91 @@ def parse_metrics_file(filename):
                     key = key.strip()
                     value = float(value.strip())
 
+                    metrics = central_metrics if is_central else noncentral_metrics
+
+                    # Store metrics based on section
                     if current_section == 'processed':
                         if 'NIQE' in key:
-                            niqe_images.append(value)
+                            metrics['niqe_images'].append(value)
                         elif 'var_of_LoG' in key:
-                            sharpness_log_images.append(value)
+                            metrics['sharpness_log_images'].append(value)
                         elif 'BRISQUE' in key:
-                            brisque_images.append(value)
+                            metrics['brisque_images'].append(value)
                         elif 'PIQE' in key:
-                            piqe_images.append(value)
-
+                            metrics['piqe_images'].append(value)
                     elif current_section == 'reference':
                         if 'NIQE' in key:
-                            niqe_references.append(value)
+                            metrics['niqe_references'].append(value)
                         elif 'var_of_LoG' in key:
-                            sharpness_log_references.append(value)
+                            metrics['sharpness_log_references'].append(value)
                         elif 'BRISQUE' in key:
-                            brisque_references.append(value)
+                            metrics['brisque_references'].append(value)
                         elif 'PIQE' in key:
-                            piqe_references.append(value)
+                            metrics['piqe_references'].append(value)
                 except ValueError as e:
                     print(f"Skipping malformed line: {line} - {str(e)}")
+
+    return is_central
 
 
 # Specify the directory containing text files
 project_directory = "G:\PapyrusSorted"
-report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive6.txt"), recursive=True)
+report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive8.txt"), recursive=True)
 
-sharpness_log_images = []
-brisque_images = []
-piqe_images = []
-niqe_images = []
+# Initialize metrics dictionaries
+central_metrics = {
+    'niqe_images': [],
+    'sharpness_log_images': [],
+    'brisque_images': [],
+    'piqe_images': [],
+    'niqe_references': [],
+    'sharpness_log_references': [],
+    'brisque_references': [],
+    'piqe_references': [],
+    'report_files': []
+}
 
-sharpness_log_references = []
-brisque_references = []
-piqe_references = []
-niqe_references = []
+noncentral_metrics = {
+    'niqe_images': [],
+    'sharpness_log_images': [],
+    'brisque_images': [],
+    'piqe_images': [],
+    'niqe_references': [],
+    'sharpness_log_references': [],
+    'brisque_references': [],
+    'piqe_references': [],
+    'report_files': []
+}
 
 # Loop through all files and process each
 for report_file in report_files:
-    parse_metrics_file(report_file)
+    is_central = parse_metrics_file(report_file, central_metrics, noncentral_metrics)
+    if is_central is not None:  # Only add to list if region was detected
+        if is_central:
+            central_metrics['report_files'].append(report_file)
+        else:
+            noncentral_metrics['report_files'].append(report_file)
 
 
-#%% Create boxplots
-def create_standard_boxplots(image_data, reference_data, metrics):
+# %% Create boxplots
+def create_region_boxplots(region_metrics, metrics_names, region_type):
     fig, axs = plt.subplots(2, 2, figsize=(14, 12))
 
-    for idx, (ax, metric) in enumerate(zip(axs.flat, metrics)):
+    image_data = [
+        np.array(region_metrics['niqe_images']),
+        np.array(region_metrics['sharpness_log_images']),
+        np.array(region_metrics['brisque_images']),
+        np.array(region_metrics['piqe_images'])
+    ]
+
+    reference_data = [
+        np.array(region_metrics['niqe_references']),
+        np.array(region_metrics['sharpness_log_references']),
+        np.array(region_metrics['brisque_references']),
+        np.array(region_metrics['piqe_references'])
+    ]
+
+    for idx, (ax, metric) in enumerate(zip(axs.flat, metrics_names)):
         combined_data = [image_data[idx], reference_data[idx]]
 
         # Create basic boxplot with default styling
@@ -91,39 +146,39 @@ def create_standard_boxplots(image_data, reference_data, metrics):
         ax.set_title(metric, fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
 
-    plt.suptitle('Sharpness threshold=adaptive (0.5 + **2). Reg reference=\'mean\'. Mean cumulation.\nDenoise all central with bm3d, all non-central with hamgf.',
-                 y=0.98,  # Position slightly below top
-                 fontsize=14,
-                 fontweight='bold')
+    plt.suptitle(
+        f'{region_type} region only. Sharpness threshold=adaptive (min 2 frames, max 28 frames, 0,5 + **2 (default)).\nReg reference=\'mean\'. Mean cumulation.',
+        y=0.98,  # Position slightly below top
+        fontsize=14,
+        fontweight='bold')
 
     # Adjust layout with increased top padding
     plt.tight_layout(rect=[0, 0, 1, 0.98])  # rect=[left, bottom, right, top]
     plt.show()
 
 
-# Prepare data (using your lists)
-metrics = [
+# Define metrics names for plots
+metrics_names = [
     'NIQE Index',
     'Sharpness (var_of_LoG)',
     'BRISQUE Index',
     'PIQE Index'
 ]
 
-data_arrays = [
-    (niqe_images, niqe_references),
-    (sharpness_log_images, sharpness_log_references),
-    (brisque_images, brisque_references),
-    (piqe_images, piqe_references)
-]
+# Create boxplots for central region
+if central_metrics['niqe_images']:  # Check if we have data for central region
+    create_region_boxplots(central_metrics, metrics_names, "Central")
+else:
+    print("No data available for central region.")
 
-# Convert to numpy arrays
-image_data = [np.array(pair[0]) for pair in data_arrays]
-reference_data = [np.array(pair[1]) for pair in data_arrays]
+# Create boxplots for non-central region
+if noncentral_metrics['niqe_images']:  # Check if we have data for non-central region
+    create_region_boxplots(noncentral_metrics, metrics_names, "Non-Central")
+else:
+    print("No data available for non-central region.")
 
-create_standard_boxplots(image_data, reference_data, metrics)
 
-
-#%% Identify outliers
+# %% Identify outliers
 def detect_outliers_iqr(data):
     data = np.array(data)
     q1 = np.percentile(data, 15)  # 15
@@ -136,28 +191,47 @@ def detect_outliers_iqr(data):
     return outliers.tolist()
 
 
-metrics = {
-    'sharpness_log_images': sharpness_log_images,
-    'brisque_images': brisque_images,
-    'piqe_images': piqe_images,
-    'niqe_images': niqe_images
-}
+def detect_outliers_for_region(region_metrics, region_type):
+    outlier_folders = set()
 
-outlier_folders = set()
-for metric, values in metrics.items():
-    outlier_indices = detect_outliers_iqr(values)
-    for idx in outlier_indices:
-        folder = os.path.dirname(report_files[idx])
-        outlier_folders.add(folder)
+    metrics_to_check = {
+        'sharpness_log_images': region_metrics['sharpness_log_images'],
+        'brisque_images': region_metrics['brisque_images'],
+        'piqe_images': region_metrics['piqe_images'],
+        'niqe_images': region_metrics['niqe_images']
+    }
 
-print("Outlier folders:")
-for folder in outlier_folders:
-    print(folder)
+    for metric, values in metrics_to_check.items():
+        outlier_indices = detect_outliers_iqr(values)
+        for idx in outlier_indices:
+            folder = os.path.dirname(region_metrics['report_files'][idx])
+            outlier_folders.add(folder)
 
-
-#%%
-# Print a list of folders where the brisque index is lower than 0
-for idx, value in enumerate(brisque_images):
-    if value < 0:
-        folder = os.path.dirname(report_files[idx])
+    print(f"Outlier folders ({region_type} Region):")
+    for folder in outlier_folders:
         print(folder)
+
+    return outlier_folders
+
+
+# Detect outliers for central region
+if central_metrics['niqe_images']:
+    central_outliers = detect_outliers_for_region(central_metrics, "Central")
+
+# Detect outliers for non-central region
+if noncentral_metrics['niqe_images']:
+    noncentral_outliers = detect_outliers_for_region(noncentral_metrics, "Non-Central")
+
+# %%
+# Print a list of folders where the brisque index is lower than 0
+# print("\nFolders with BRISQUE < 0 (Central Region):")
+# for idx, value in enumerate(central_metrics['brisque_images']):
+#     if value < 0:
+#         folder = os.path.dirname(central_metrics['report_files'][idx])
+#         print(folder)
+#
+# print("\nFolders with BRISQUE < 0 (Non-Central Region):")
+# for idx, value in enumerate(noncentral_metrics['brisque_images']):
+#     if value < 0:
+#         folder = os.path.dirname(noncentral_metrics['report_files'][idx])
+#         print(folder)
