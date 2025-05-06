@@ -91,14 +91,13 @@ def load_video(video_file_path: str) -> np.ndarray:
 def load_reference_image(reference_path: str) -> np.ndarray:
     """
     Loads a reference image.
-    Always load a video first, then load the reference image.
+    Always load a video first, then load the reference image. Otherwise, the reference image will be discarded.
     :param reference_path: Path to the reference image.
     :return: Reference image as np.ndarray.
     """
     global reference_image
 
     reference_image = cv2.imread(reference_path, cv2.IMREAD_GRAYSCALE)
-    reference_image = match_dimensions(reference_image)  # Resize reference image to match the dimensions of the input frames
     reference_image = normalize(reference_image)
 
     return reference_image
@@ -178,7 +177,7 @@ def calculate_sharpness2(
 
 def calculate_sharpness(frames: np.ndarray) -> list[float]:
     """
-    Calculates the sharpness of a frame stack using multiple metrics and combines them into a single metric.
+    Calculates the sharpness of a frame stack using multiple metrics and combines them into a single value.
     :param frames: Input frame stack as np.ndarray.
     :return: List of estimated sharpness values.
     """
@@ -860,17 +859,25 @@ def normalize(image: np.ndarray) -> np.ndarray[np.uint8]:
     return cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
 
 
-def match_dimensions(image1: np.ndarray, image2: np.ndarray = None) -> np.ndarray:
+def resize(image: np.ndarray, target_dimensions: tuple[int, int] | np.ndarray) -> np.ndarray:
     """
-    Resizes image1 to 1066 x 1066 pixels. If image2 is provided, it will be resized to match its dimensions instead.
-    :param image1: Image to be resized as np.ndarray.
-    :param image2: Image to match dimensions with as np.ndarray.
+    Resizes an image using bicubic interpolation. Either a tuple or an image of target shape can be provided as the target.
+    If target_dimensions is a tuple, it is treated as the target size.
+    If target_dimensions is an image, its shape is used as the target size.
+    :param image: Image to be resized as np.ndarray.
+    :param target_dimensions: Dimensions of the target image as tuple or image to be used as a target as np.ndarray.
     :return: Resized image1 as np.ndarray.
     """
-    if image2 is None:
-        image2 = np.zeros((1066, 1066), dtype=np.uint8)
+    if isinstance(target_dimensions, tuple):
+        image_resized = cv2.resize(image, target_dimensions, interpolation=cv2.INTER_CUBIC)
 
-    return cv2.resize(image1, (image2.shape[1], image2.shape[0]), interpolation=cv2.INTER_CUBIC)
+    elif isinstance(target_dimensions, np.ndarray):
+        image_resized = cv2.resize(image, (target_dimensions.shape[1], target_dimensions.shape[0]), interpolation=cv2.INTER_CUBIC)
+
+    else:
+        raise ValueError("Parameter target_dimensions must be a tuple or an image (np.ndarray).")
+
+    return image_resized
 
 
 def assess_quality(image_processed: np.ndarray, report_path: str = None):
