@@ -231,14 +231,10 @@ def select_frames(frames: np.ndarray, sharpness: list) -> np.ndarray:
     std_sharp = np.std(sharpness)
     mean_sharp = np.mean(sharpness)
     cv = std_sharp / (mean_sharp + 1e-8)  # Coefficient of variation; + 1e-8 to avoid division by zero
-
-    # Stricter mapping: Use a lower cv_max, so high std means fewer frames
-    cv_max = 0.5
+    cv_max = 0.5  # Controls the sensitivity to sharpness variability
     cv = min(cv, cv_max)
     frac = 1 - (cv / cv_max)  # 1 when cv=0, 0 when cv=cv_max
-
-    # Make the drop-off sharper by squaring frac
-    frac = frac ** 2  # Makes the function stricter
+    frac = frac ** 2  # Make the drop-off sharper by squaring frac
 
     n_select = int(min_select + frac * (max_select - min_select))
     n_select = max(min_select, min(n_select, max_select))
@@ -368,21 +364,6 @@ def extend_to_union(frames: np.ndarray, update_note=True) -> np.ndarray:
         note += "extended to union "
 
     return np.array(extended_frames)
-
-
-# def upsample(frames, scale=2):
-#     """
-#     Upsamples a frame stack by a specified scale factor using nearest neighbor interpolation.
-#     :param frames: Input image stack as np.ndarray.
-#     :param scale: Upsampling scale factor.
-#     :return: Upsampled frame stack as np.ndarray.
-#     """
-#     frames_upsampled = []
-#     for frame in frames:
-#         height, width = frame.shape
-#         frames_upsampled.append(cv2.resize(frame, (width * scale, height * scale), interpolation=cv2.INTER_CUBIC))
-#
-#     return np.array(frames_upsampled)
 
 
 def register(
@@ -830,8 +811,9 @@ np.ndarray[np.uint8]:
         gaussian_filtered = skimage.filters.gaussian(median_filtered, sigma=sigma)
 
         # Blend results: use median filter result near vessel edges and Gaussian filter result in smooth regions
-        blend_factor = np.clip(edges * 5, 0, 1)  # Scale up edge response for blending
-        denoised = blend_factor * median_filtered + (1 - blend_factor) * gaussian_filtered
+        blend_factor = 5  # Control the amount of median vs Gaussian filtering (higher = more median)
+        blend_ratio = np.clip(edges * blend_factor, 0, 1)  # Scale up edge response for blending
+        denoised = blend_ratio * median_filtered + (1 - blend_ratio) * gaussian_filtered
         note += f"Denoised with HMGF (weight={weight})\n"
 
     else:
@@ -958,7 +940,7 @@ def assess_quality(image_processed: np.ndarray, report_path: str = None):
             f.write(f"No reference image provided\n" if reference is None else
                     f"Reference image:\n"
                     f"Sharpness (var_of_laplacian) = {sharpness_reference:.2f}\n"
-                    f"Sharpness (var_of_LoG = {sharpness_log_reference:.2f}\n"
+                    f"Sharpness (var_of_LoG) = {sharpness_log_reference:.2f}\n"
                     f"BRISQUE index = {brisque_reference:.2f}\n"
                     f"PIQE index = {piqe_reference:.2f}\n"
                     f"NIQE index = {niqe_reference:.2f}\n"

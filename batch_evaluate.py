@@ -147,7 +147,7 @@ def create_region_boxplots(region_metrics, metrics_names, region_type):
         ax.grid(True, alpha=0.3)
 
     plt.suptitle(
-        f'{region_type} region only. Sharpness threshold=adaptive (min 2 frames, max 28 frames, 0,5 + **2 (default)).\nReg reference=\'mean\'. Mean cumulation.',
+        f'{region_type} region only. Sharpness threshold=adaptive (min 2 frames, max 28 frames, 0.5 + **2 (default)).\nReg reference=\'mean\'. Mean cumulation. Resized to 1500x1500.',
         y=0.98,  # Position slightly below top
         fontsize=14,
         fontweight='bold')
@@ -222,16 +222,44 @@ if central_metrics['niqe_images']:
 if noncentral_metrics['niqe_images']:
     noncentral_outliers = detect_outliers_for_region(noncentral_metrics, "Non-Central")
 
-# %%
-# Print a list of folders where the brisque index is lower than 0
-# print("\nFolders with BRISQUE < 0 (Central Region):")
-# for idx, value in enumerate(central_metrics['brisque_images']):
-#     if value < 0:
-#         folder = os.path.dirname(central_metrics['report_files'][idx])
-#         print(folder)
-#
-# print("\nFolders with BRISQUE < 0 (Non-Central Region):")
-# for idx, value in enumerate(noncentral_metrics['brisque_images']):
-#     if value < 0:
-#         folder = os.path.dirname(noncentral_metrics['report_files'][idx])
-#         print(folder)
+
+#%% Export data into csv
+import csv
+
+
+def export_metrics_to_csv(region_metrics, region_type, output_file):
+    """
+    Export region metrics to a CSV file.
+    :param region_metrics: Dictionary containing metrics data.
+    :param region_type: Type of region (e.g., "Central" or "Non-Central").
+    :param output_file: Path to the output CSV file.
+    """
+    with open(output_file, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        # Write header
+        writer.writerow([
+            "NIQE (Images)", "Sharpness (var_of_LoG)",
+            "BRISQUE (Images)", "PIQE (Images)",
+            "NIQE (References)", "Sharpness (var_of_LoG References)",
+            "BRISQUE (References)", "PIQE (References)"
+        ])
+        # Write data rows
+        for i, report_file in enumerate(region_metrics['report_files']):
+            writer.writerow([
+                region_metrics['niqe_images'][i],
+                region_metrics['sharpness_log_images'][i],
+                region_metrics['brisque_images'][i],
+                region_metrics['piqe_images'][i],
+                region_metrics['niqe_references'][i] if i < len(region_metrics['niqe_references']) else None,
+                region_metrics['sharpness_log_references'][i] if i < len(region_metrics['sharpness_log_references']) else None,
+                region_metrics['brisque_references'][i] if i < len(region_metrics['brisque_references']) else None,
+                region_metrics['piqe_references'][i] if i < len(region_metrics['piqe_references']) else None
+            ])
+
+# Export central region metrics
+if central_metrics['report_files']:
+    export_metrics_to_csv(central_metrics, "Central", "G:/PapyrusSorted/Results/Region-separate/central_metrics.csv")
+
+# Export non-central region metrics
+if noncentral_metrics['report_files']:
+    export_metrics_to_csv(noncentral_metrics, "Non-Central", "G:/PapyrusSorted/Results/Region-separate/noncentral_metrics.csv")

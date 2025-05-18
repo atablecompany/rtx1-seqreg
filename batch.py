@@ -17,17 +17,16 @@ def process_video(video_path):
     cum = fundus.cumulate(reg)  # Cumulate registered frames
     if fundus.is_central_region:  # Additional denoising
         if len(selected_frames) < 4:
-            cum = fundus.denoise(cum, method='hamgf')  # Denoise using HAMGF if very few frames are selected
+            cum = fundus.denoise(cum, method='hmgf')  # Denoise using HMGF if very few frames are selected
         else:
             cum = fundus.denoise(cum)  # Always denoise using BM3D if the region is central
     else:
         cum = fundus.denoise(cum)  # If region is not central, always denoise
-    # TODO: Možná měnit váhu denoisingu podle počtu snímků?
     cum = fundus.resize(cum, reference)  # Resize processed image to match reference
 
-    output_path = video_path.replace(".mpg", "_adaptive8.png")
+    output_path = video_path.replace(".mpg", "_processed_adaptive8.png")
     fundus.save_frame(cum, output_path)  # Save processed image
-    report_path = video_path.replace(".mpg", "_adaptive8.txt")
+    report_path = video_path.replace(".mpg", "_report_adaptive8.txt")
     fundus.assess_quality(cum, report_path)  # Save quality assessment report, compare with reference if it was loaded
 
     return video_path  # Return path for progress tracking
@@ -37,13 +36,13 @@ if __name__ == "__main__":
     video_directory = "G:\PapyrusSorted"
     video_files = glob.glob(os.path.join(video_directory, "**", "*.mpg"), recursive=True)
 
-    # Select random files based on a seed
+    # # Select random files based on a seed
     # random.seed()  # Set seed for reproducibility
-    # video_files = random.sample(video_files, 20)
-    # for i, video in enumerate(video_files):
-    #     print(str(i + 1) + " " + video) # Print selected video files
+    # video_files = random.sample(video_files, 200)
+    # # for i, video in enumerate(video_files):
+    #     # print(str(i + 1) + " " + video) # Print selected video files
 
-    with ProcessPoolExecutor(max_workers=8) as executor:
+    with ProcessPoolExecutor(max_workers=4) as executor:
         # Submit all video processing tasks
         futures = [executor.submit(process_video, file) for file in video_files]
 

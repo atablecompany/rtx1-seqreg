@@ -11,6 +11,9 @@ import skimage
 # video_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506114845\OD_20240506114845_X2.0N_Y0.0_Z0.0_ABADZHIEVA_Polina_496.mpg"
 # video_path = "G:\PapyrusSorted\FRICKER_Isabelle_19880404_FEMALE\OD_20231123140522\OD_20231123140522_X0.0T_Y-2.0_Z0.0_FRICKER_Isabelle_007.mpg"
 # video_path = "G:\PapyrusSorted\BECK_Hanna_19870504_FEMALE\OD_20240327091635\OD_20240327091635_X0.0T_Y2.0_Z30.0_BECK_Hanna_192.mpg"
+# video_path = "G:\PapyrusSorted\ABADZHIEVA_Polina_19940415_FEMALE\OD_20240506115102\OD_20240506115102_X12.2N_Y5.6_Z150.0_ABADZHIEVA_Polina_496.mpg"  # noncentral
+# video_path = "G:\PapyrusSorted\ABOUZEICHAN_Rima_19860110_FEMALE\OD_20240105115601\OD_20240105115601_X2.0T_Y0.0_Z0.0_ABOUZEICHAN_Rima_315.mpg"
+video_path = "G:\PapyrusSorted\FAIZ_Farsna_19890712_FEMALE\OD_20231130121857\OD_20231130121857_X2.0T_Y0.0_Z0.0_FAIZ_Farsna_257.mpg"
 
 # Nektere pripady
 # video_path = "G:\PapyrusSorted\BUECH_Eva_19811017_FEMALE\OD_20231215124843\OD_20231215124843_X2.0N_Y0.0_Z0.0_BUECH_Eva_237.mpg"  # Koregistrovalo to různý oblasti
@@ -21,7 +24,7 @@ import skimage
 # video_path = "G:\PapyrusSorted\FARR_Anja_19850912_FEMALE\OD_20231219102331\OD_20231219102331_X10.8N_Y8.3_Z150.0_FARR_Anja_295.mpg"  # Tady je vysledek straightup horší než reference
 # video_path = "G:\PapyrusSorted\BUECH_Eva_19811017_FEMALE\OD_20231215125017\OD_20231215125017_X11.6N_Y-6.8_Z160.0_BUECH_Eva_237.mpg"  # Tady je moc velkej pohyb a tak to špatně koregistrovalo
 # video_path = "G:\PapyrusSorted\CIKAJ_Ajne_19870102_FEMALE\OD_20231120112629\OD_20231120112629_X10.4N_Y8.1_Z140.0_CIKAJ_Ajne_235.mpg"  # Špatnej ořez (rozšíření) vkůli černýmu pruhu vpravo
-video_path = "G:\PapyrusSorted\FREIER_Sophie_19901012_FEMALE\OD_20240523094753\OD_20240523094753_X0.0T_Y2.0_Z-10.0_FREIER_Sophie_213.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
+# video_path = "G:\PapyrusSorted\FREIER_Sophie_19901012_FEMALE\OD_20240523094753\OD_20240523094753_X0.0T_Y2.0_Z-10.0_FREIER_Sophie_213.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
 # video_path = "G:\PapyrusSorted\AS-II_Aiza_19850619_FEMALE\OD_20231218140208\OD_20231218140208_X0.0T_Y-2.0_Z0.0_AS-II_Aiza_NS014.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
 # video_path = "G:\PapyrusSorted\AL-EESO_Nariman Salman Khalaf_19900324_FEMALE\OD_20230608144231\OD_20230608144231_X0.0T_Y-2.0_Z30.0_AL-EESO_Nariman Salman Khalaf_P017.mpg"  # Tohle by možná šlo líp kdyby to vzalo víc snímků
 # video_path = "G:\PapyrusSorted\BUKWITSCHKA_Tina_19910306_FEMALE\OD_20230430132545\OD_20230430132545_X0.2N_Y-0.6_Z0.0_BUKWITSCHKA_Tina.mpg"  # Proč to vzalo jen 2 snímky??
@@ -93,7 +96,7 @@ fundus.show_frame(reference, custom_note="Reference image\n")
 
 #%% Apply additional denoising
 # weight = 2
-denoised = fundus.denoise(cum)
+denoised = fundus.denoise(cum, method='bm3d')
 fundus.show_frame(denoised, custom_note=f"Denoised\n")
 
 #%% Assess quality
