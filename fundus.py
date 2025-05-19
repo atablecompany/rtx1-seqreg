@@ -434,73 +434,19 @@ def register(
         else:
             raise ValueError("Invalid reference parameter. Supported values are 'best', 'previous' and 'mean'.")
 
+        local_note += "Output image given by: "
         if pad == 'crop':
             # Crop images to their intersection
             out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=False)
+            local_note += "cropped "
         elif pad == 'same':
             # Expand all frames to cover the union of non-zero regions across the stack
             out_rigid_stack = extend_to_union(out_rigid_stack, update_note=False)
+            local_note += "extended to union "
         elif pad == 'zeros':
             pass
         else:
             raise ValueError("Invalid pad parameter. Supported values are 'same', 'intersection', or 'zeros'.")
-
-        # This section is used to check if the processed image is sharper than the reference image and to re-register if necessary
-        # TODO: Možná ten check oddělat a nechat všechno na 'mean'
-        if reference_image is not None:
-            # Cumulate the registered frames
-            cum = cumulate(out_rigid_stack, update_note=False)
-            # Check if the processed image is sharper than reference
-            # noinspection PyTypeChecker
-            sharpness_reference = calculate_sharpness2(reference_image, blur=True)
-            sharpness_processed1 = calculate_sharpness2(cum, blur=True)
-            if sharpness_reference > sharpness_processed1:
-                # print("zkusme to znova")
-                # Register again but switch reference
-                reference_new = 'previous' if reference == 'best' else 'best'
-
-                if reference_new == 'best':
-                    # Find the sharpest frame and move it to the first position in the stack
-                    best_frame_index = np.argmax(sharpness)  # Find the sharpest frame
-                    # Move the sharpest frame to the first position in the stack
-                    selected_frames = np.roll(selected_frames, -best_frame_index, axis=0)
-                    # Perform registration
-                    sr = StackReg(StackReg.RIGID_BODY)
-                    out_rigid_stack2 = sr.register_transform_stack(selected_frames, reference='first')
-                    out_rigid_stack2 = np.clip(out_rigid_stack2, 0, 255).astype(
-                        np.uint8)  # Ensure pixel values are within [0, 255]
-
-                elif reference_new == 'previous':
-                    # Perform registration to the previous frame in the stack
-                    sr = StackReg(StackReg.RIGID_BODY)
-                    out_rigid_stack2 = sr.register_transform_stack(selected_frames, reference='previous')
-                    out_rigid_stack2 = np.clip(out_rigid_stack2, 0, 255).astype(
-                        np.uint8)  # Ensure pixel values are within [0, 255]
-
-                # Cumulate the registered frames
-                cum2 = cumulate(out_rigid_stack2, update_note=False)
-                # Check if the processed image is sharper than reference
-                # noinspection PyTypeChecker
-                sharpness_processed2 = calculate_sharpness2(cum2, blur=True)
-
-                if sharpness_processed2 > sharpness_processed1:
-                    # If this registration is better than the previous one, use it
-                    out_rigid_stack = out_rigid_stack2
-                    if pad == 'crop':
-                        # Crop images to their intersection
-                        out_rigid_stack = crop_to_intersection(out_rigid_stack, update_note=False)
-                    elif pad == 'same':
-                        # Expand all frames to cover the union of non-zero regions across the stack
-                        out_rigid_stack = extend_to_union(out_rigid_stack, update_note=False)
-                    # Update note
-                    local_note += f"Switched reference to '{reference_new}'\n"
-
-        # Update note
-        local_note += "Output image given by: "
-        if pad == 'crop':
-            local_note += "cropped "
-        if pad == 'same':
-            local_note += "extended to union "
 
         # Update the global note if update_note is True
         if update_note:
@@ -539,14 +485,14 @@ def register2(
     else:
         # Set parameters for registration
         param_map = sitk.GetDefaultParameterMap("rigid")
-        param_map["NumberOfResolutions"] = ["6"]  # Set number of resolutions for pyramidal registration
+        param_map["NumberOfResolutions"] = ["5"]  # Set number of resolutions for pyramidal registration
         # Uncomment to turn off pyramidal registration
         # param_map["NumberOfResolutions"] = ["1"]
         param_map["ShrinkFactorsPerLevel"] = ["2"]
         param_map["SmoothingSigmasPerLevel"] = ["5"]
         param_map["Metric"] = ["AdvancedNormalizedCorrelation"]
         param_map["MaximumNumberOfIterations"] = ["200"]
-        sitk.PrintParameterMap(param_map)  # Uncomment to print the parameter map
+        # sitk.PrintParameterMap(param_map)  # Uncomment to print the parameter map
 
         if reference == 'previous':
             out_rigid_stack = [selected_frames[0]]
@@ -628,87 +574,6 @@ def register2(
 
         # This is the output of the registration
         out_rigid_stack = np.clip(out_rigid_stack, 0, 255).astype(np.uint8)  # Ensure pixel values are within [0, 255]
-        out_rigid_stack1 = out_rigid_stack.copy()
-
-        # This section is used to check if the processed image is sharper than the reference image and to re-register if necessary
-        if reference_image is not None:
-            # Cumulate the registered frame
-            cum = cumulate(out_rigid_stack1, update_note=False)
-            # Check if the processed image is sharper than reference
-            # noinspection PyTypeChecker
-            sharpness_reference = calculate_sharpness2(reference_image, blur=True)
-            sharpness_processed1 = calculate_sharpness2(cum, blur=True)  # No blur because there is now presumably little noise
-
-            if sharpness_reference > sharpness_processed1:
-                # print("zkusme to znova")
-                # Create lists to store the registered frame stacks and sharpness values
-                outs = [out_rigid_stack1]
-                sharps = [sharpness_processed1]
-
-                # Register again, this time using pyStackReg
-                outs.append(register(selected_frames, sharpness, reference='previous', pad=pad, update_note=False))
-
-                # Cumulate the registered frame
-                cum = cumulate(outs[-1], update_note=False)
-                sharps.append(calculate_sharpness2(cum, blur=True))
-
-                if sharpness_reference > sharps[-1]:
-                    # If the processed image is still not sharper than the reference, register one last time using overkill parameters
-                    # print("zkusme to jeste jednou")
-                    param_map["NumberOfResolutions"] = ["6"]  # Use pyramidal registration
-                    param_map["MaximumNumberOfIterations"] = ["500"]
-
-                    out_rigid_stack3 = [selected_frames[0]]
-
-                    # Register to previous frame in the stack
-                    for i, moving_frame in enumerate(selected_frames[1:]):
-                        # Convert reference image to SimpleITK format
-                        reference_frame = sitk.GetImageFromArray(out_rigid_stack3[i].astype(np.float32))
-                        # Convert moving image to SimpleITK format
-                        moving_image = sitk.GetImageFromArray(moving_frame.astype(np.float32))
-
-                        # Perform registration using SimpleElastix
-                        elastix_image_filter = sitk.ElastixImageFilter()
-                        elastix_image_filter.SetFixedImage(reference_frame)
-                        elastix_image_filter.SetMovingImage(moving_image)
-                        elastix_image_filter.SetParameterMap(param_map)
-                        elastix_image_filter.LogToConsoleOff()
-                        elastix_image_filter.Execute()
-
-                        # Get the registered image and convert it back to NumPy format
-                        registered_image = sitk.GetArrayFromImage(elastix_image_filter.GetResultImage())
-                        out_rigid_stack3.append(registered_image)
-
-                    if pad == 'same':
-                        # Expand all frames to cover the union of non-zero regions across the stack
-                        out_rigid_stack3 = extend_to_union(out_rigid_stack3, update_note=False)
-                    elif pad == 'crop':
-                        # Crop images to their intersection
-                        out_rigid_stack3 = crop_to_intersection(out_rigid_stack3, update_note=False)
-
-                    outs.append(np.clip(out_rigid_stack3, 0, 255).astype(np.uint8))  # Ensure pixel values are within [0, 255])
-                    cum = cumulate(out_rigid_stack3, update_note=False)
-                    sharps.append(calculate_sharpness2(cum, blur=True))
-
-                # Return the sharpest registration result
-                sharpest_index = np.argmax(sharps)
-                if sharpest_index == 1:
-                    local_note = f"Registration method: pyStackReg\nReference: 'previous'\n"
-                elif sharpest_index == 2:
-                    local_note = f"Registration method: SimpleElastix\nReference: 'previous'\n"
-
-                if sharpest_index != 0:
-                    if pad == 'crop':
-                        local_note += "Output image given by: cropped "
-                    elif pad == 'same':
-                        local_note += "Output image given by: extended to union "
-
-                out_rigid_stack = outs[sharpest_index]
-
-                # print(sharpest_index)
-                # show_frame(cumulate(outs[0], update_note=False), custom_note="0")
-                # show_frame(cumulate(outs[1], update_note=False), custom_note="1")
-                # show_frame(cumulate(outs[2], update_note=False), custom_note="2")
 
         # Update note
         note += local_note
@@ -753,8 +618,7 @@ def cumulate(frames: np.ndarray, method: Literal['mean', 'median'] = 'mean', upd
     return cum
 
 
-def denoise(image: np.ndarray, method: Literal['bm3d', 'tv', 'hmgf'] = None, weight: int | float = None) -> \
-np.ndarray[np.uint8]:
+def denoise(image: np.ndarray, method: Literal['bm3d', 'tv', 'hmgf'] = None, weight: int | float = None) -> np.ndarray[np.uint8]:
     """
     Denoises an image using BM3D, TV, bilateral filtering, or hybrid median Gaussian filtering.
     :param method: Method for denoising. Can be one of the following:
