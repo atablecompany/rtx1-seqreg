@@ -77,8 +77,8 @@ def parse_metrics_file(filename, central_metrics, noncentral_metrics):
 
 
 # Specify the directory containing text files
-project_directory = "G:\PapyrusSorted"
-report_files = glob.glob(os.path.join(project_directory, "**", "*report_adaptive8.txt"), recursive=True)
+project_directory = ""  # Look for text files within this directory
+report_files = glob.glob(os.path.join(project_directory, "**", "*report.txt"), recursive=True)
 
 # Initialize metrics dictionaries
 central_metrics = {
@@ -258,8 +258,8 @@ def export_metrics_to_csv(region_metrics, region_type, output_file):
 
 # Export central region metrics
 if central_metrics['report_files']:
-    export_metrics_to_csv(central_metrics, "Central", "G:/PapyrusSorted/Results/Region-separate/central_metrics.csv")
+    export_metrics_to_csv(central_metrics, "Central", "central_metrics.csv")
 
 # Export non-central region metrics
 if noncentral_metrics['report_files']:
-    export_metrics_to_csv(noncentral_metrics, "Non-Central", "G:/PapyrusSorted/Results/Region-separate/noncentral_metrics.csv")
+    export_metrics_to_csv(noncentral_metrics, "Non-Central", "noncentral_metrics.csv")

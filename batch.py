@@ -3,19 +3,17 @@ import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import fundus
 from tqdm import tqdm
-import random
 
 
 def process_video(video_path):
     frames = fundus.load_video(video_path)  # Load video frames
     reference_path = video_path.replace(".mpg", ".png")
     reference = fundus.load_reference_image(reference_path)  # Load reference image
-
     sharpness = fundus.calculate_sharpness(frames)  # Calculate sharpness of frames
     selected_frames = fundus.select_frames(frames, sharpness)  # Select sharp frames
     reg = fundus.register(selected_frames, sharpness, reference='mean')  # Register selected frames
     cum = fundus.cumulate(reg)  # Cumulate registered frames
-    if fundus.is_central_region:  # Additional denoising
+    if fundus.is_central_region:  # Apply additional denoising
         if len(selected_frames) < 4:
             cum = fundus.denoise(cum, method='hmgf')  # Denoise using HMGF if very few frames are selected
         else:
@@ -33,16 +31,11 @@ def process_video(video_path):
 
 
 if __name__ == "__main__":
-    video_directory = "G:\PapyrusSorted"
+    video_directory = "path/to/video/directory"  # Input directory containing video files
     video_files = glob.glob(os.path.join(video_directory, "**", "*.mpg"), recursive=True)
 
-    # # Select random files based on a seed
-    # random.seed()  # Set seed for reproducibility
-    # video_files = random.sample(video_files, 200)
-    # # for i, video in enumerate(video_files):
-    #     # print(str(i + 1) + " " + video) # Print selected video files
-
-    with ProcessPoolExecutor(max_workers=4) as executor:
+    # Parallel processing of video files
+    with ProcessPoolExecutor(max_workers=4) as executor:  # Select the number of CPU threads to be used
         # Submit all video processing tasks
         futures = [executor.submit(process_video, file) for file in video_files]
 
