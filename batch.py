@@ -31,7 +31,7 @@ def process_video(video_path):
 
 
 if __name__ == "__main__":
-    video_directory = ""  # Input directory containing video files
+    video_directory = "path/to/video/directory"  # Input directory containing video files
     video_files = glob.glob(os.path.join(video_directory, "**", "*.mpg"), recursive=True)
 
     # Parallel processing of video files
