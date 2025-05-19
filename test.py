@@ -6,7 +6,7 @@ import fundus
 import time
 
 #%% Import video file
-video_path = ""
+video_path = "path/to/video.mpg"
 
 reference_path = video_path.replace(".mpg", ".png")
 report_path = video_path.replace(".mpg", "_report_test.txt")
