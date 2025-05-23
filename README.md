@@ -2,7 +2,7 @@
 A Python toolkit for processing fundus image sequences from the rtx1 camera. This project processes MPEG-1 video files, registers sharp video frames and reduces noise through frame averaging and denoising.
 
 ![Original image sequence](https://i.imgur.com/POrsoiR.gif)
-<h1> → </h1>
+ → 
 <img src="https://i.imgur.com/rkV157D.png" alt="Processed image" width="400" height="400">
 
 ## Features
