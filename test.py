@@ -39,10 +39,10 @@ selected_frames = fundus.select_frames(frames, sharpness)
 
 #%% Perform registration
 # Register with pyStackReg
-# reg = fundus.register(selected_frames, sharpness, reference='previous', pad='same')
+reg = fundus.register(selected_frames, sharpness, reference='previous', pad='same')
 
 # Register with elastix
-reg = fundus.register(selected_frames, sharpness, reference='previous', pad='same')
+# reg = fundus.register2(selected_frames, sharpness, reference='previous', pad='same')
 
 #%% Save registered frames
 # for i in range(len(reg)):
