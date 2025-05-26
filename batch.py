@@ -22,9 +22,9 @@ def process_video(video_path):
         cum = fundus.denoise(cum)  # If region is not central, always denoise
     cum = fundus.resize(cum, reference)  # Resize processed image to match reference
 
-    output_path = video_path.replace(".mpg", "_processed_adaptive8.png")
+    output_path = video_path.replace(".mpg", "_processed.png")
     fundus.save_frame(cum, output_path)  # Save processed image
-    report_path = video_path.replace(".mpg", "_report_adaptive8.txt")
+    report_path = video_path.replace(".mpg", "_report.txt")
     fundus.assess_quality(cum, report_path)  # Save quality assessment report, compare with reference if it was loaded
 
     return video_path  # Return path for progress tracking
